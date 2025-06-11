@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
 import wave  # For checking audio properties
+from difflib import SequenceMatcher
 
 # --- LLM & Whisper Model Imports ---
 from llama_cpp import Llama
@@ -91,19 +92,22 @@ def _normalize(text: str) -> str:
     """Normalize text for fuzzy matching."""
     return re.sub(r"[^a-z0-9\s]", "", text.lower())
 
-def find_quote_timestamps(segments, quote, window: int = 8):
-    """Return start/end times and the actual snippet covering the quote.
+def find_quote_timestamps(segments, quote, *, window: int = 20, threshold: float = 0.6):
+    """Return start/end times and the snippet most similar to the quote.
 
-    The original implementation used a very small sliding window which often
-    failed to match longer quotes spanning several Whisper segments.  This
-    expanded approach searches a larger window and builds the candidate snippet
-    incrementally so longer phrases can be located reliably.
+    The search considers windows of ``window`` segments, building up candidate
+    snippets and comparing them to the normalized quote using ``SequenceMatcher``
+    similarity. The best scoring snippet is returned if its ratio meets or
+    exceeds ``threshold``. Otherwise ``(None, None, None)`` is returned.
     """
     if not quote:
         return None, None, None
 
     target = _normalize(quote)
+    best_ratio = 0.0
+    best_result = (None, None, None)
     n = len(segments)
+
     for i in range(n):
         combined = ""
         start = None
@@ -118,9 +122,14 @@ def find_quote_timestamps(segments, quote, window: int = 8):
             if combined:
                 combined += " "
             combined += seg.get("text", "")
-            if target in _normalize(combined):
-                snippet = combined.strip()
-                return start, end, snippet
+
+            ratio = SequenceMatcher(None, _normalize(combined), target).ratio()
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_result = (start, end, combined.strip())
+
+    if best_ratio >= threshold:
+        return best_result
     return None, None, None
 
 def extract_clip(video_path, start, end, output_path):
