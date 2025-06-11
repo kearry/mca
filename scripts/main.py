@@ -268,28 +268,32 @@ Here is an example of the required output format:
         )
 
         response_content = chat_completion['choices'][0]['message']['content']
-    print("--- RAW LLM OUTPUT ---", file=sys.stderr)
-    print(response_content, file=sys.stderr)
-    print("--- END RAW LLM OUTPUT ---", file=sys.stderr)
+        print("--- RAW LLM OUTPUT ---", file=sys.stderr)
+        print(response_content, file=sys.stderr)
+        print("--- END RAW LLM OUTPUT ---", file=sys.stderr)
 
-    try:
-        if response_content.strip().startswith("```json"):
-            response_content = response_content.strip()[7:-3]
-        json_start_index = response_content.find('[')
-        if json_start_index == -1:
-            json_start_index = response_content.find('{')
-        response_content = response_content[json_start_index:]
-        data = json.loads(response_content)
-        if isinstance(data, dict) and len(data) == 1 and isinstance(list(data.values())[0], list):
-            return list(data.values())[0]
-        return data
-    except Exception as e:
-        # Propagate a clear error so the caller can fail the job instead of
-        # continuing with empty results.
-        error_msg = f"Failed to parse LLM output: {e}. Raw output: {response_content}"
-        print(f"Error parsing JSON output: {e}", file=sys.stderr)
-        print(f"Raw output: {response_content}", file=sys.stderr)
-        raise ValueError(error_msg)
+        try:
+            if response_content.strip().startswith("```json"):
+                response_content = response_content.strip()[7:-3]
+            json_start_index = response_content.find('[')
+            if json_start_index == -1:
+                json_start_index = response_content.find('{')
+            response_content = response_content[json_start_index:]
+            data = json.loads(response_content)
+            if isinstance(data, dict) and len(data) == 1 and isinstance(list(data.values())[0], list):
+                posts = list(data.values())[0]
+            else:
+                posts = data
+            all_posts.extend(posts)
+        except Exception as e:
+            # Propagate a clear error so the caller can fail the job instead of
+            # continuing with empty results.
+            error_msg = f"Failed to parse LLM output: {e}. Raw output: {response_content}"
+            print(f"Error parsing JSON output: {e}", file=sys.stderr)
+            print(f"Raw output: {response_content}", file=sys.stderr)
+            raise ValueError(error_msg)
+
+    return all_posts
 
 # --- Main Execution ---
 if __name__ == "__main__":
