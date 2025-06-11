@@ -33,7 +33,7 @@ LLM_TEXT_GENERATOR = Llama(
 
 # The whispercpp library forbids direct instantiation via the constructor.
 # Use the provided helper to load pretrained weights.
-WHISPER_TRANSCRIBER = Whisper.from_pretrained(model_path=WHISPER_MODEL_PATH)
+WHISPER_TRANSCRIBER = Whisper.from_pretrained(WHISPER_MODEL_PATH)
 
 # --- Audio & Video Parsers ---
 def convert_to_wav(video_path, job_id):
