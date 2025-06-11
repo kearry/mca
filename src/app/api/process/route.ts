@@ -57,6 +57,16 @@ export async function POST(req: NextRequest) {
         const pythonScriptPath = path.resolve(process.cwd(), 'scripts/main.py');
         const venvPython = path.resolve(process.cwd(), 'venv/bin/python');
 
+        try {
+            await fs.access(venvPython);
+        } catch {
+            await prisma.job.update({
+                where: { id: job.id },
+                data: { status: 'failed', error: 'Python runtime not found' },
+            });
+            return NextResponse.json({ error: 'Python runtime not found' }, { status: 500 });
+        }
+
         let scriptArgs: string[] = [];
         if (inputType === 'youtube') {
             scriptArgs = [inputType, url, job.id];
@@ -72,6 +82,14 @@ export async function POST(req: NextRequest) {
         }
 
         const pythonProcess = spawn(venvPython, [pythonScriptPath, ...scriptArgs]);
+
+        pythonProcess.on('error', async (err) => {
+            console.error('Failed to start Python process:', err);
+            await prisma.job.update({
+                where: { id: job.id },
+                data: { status: 'failed', error: `Python process error: ${err.message}` },
+            });
+        });
 
         let scriptOutput = '';
         let scriptError = '';
