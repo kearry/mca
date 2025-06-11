@@ -49,5 +49,14 @@ class GeneratePostsTests(unittest.TestCase):
         self.assertEqual(posts[0]["post_text"], "first")
         self.assertEqual(posts[1]["post_text"], "second")
 
+    def test_json_with_preamble(self):
+        stub = StubLLM([
+            "<think>\nHere is your data:\n[{\"post_text\": \"foo\", \"source_quote\": \"bar\"}]"
+        ])
+        main.LLM_TEXT_GENERATOR = stub
+        posts = main.generate_posts_from_text("hello", "text")
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0]["post_text"], "foo")
+
 if __name__ == "__main__":
     unittest.main()
