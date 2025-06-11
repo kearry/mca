@@ -26,9 +26,10 @@ Below is a quick start summary.
 
 Open [http://localhost:3000](http://localhost:3000) to access the web interface. Upload a PDF, paste text or provide a YouTube URL and the backend will generate sample posts in `public/generated/`.
 
-If downloading a YouTube video fails because authentication is required, set the
-`YTDLP_COOKIE_FILE` environment variable to the path of a cookies file exported
-from your browser. See the [yt-dlp cookies guide](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp)
+If downloading a YouTube video fails because authentication is required, create
+a `.env` file in the project root and set `YTDLP_COOKIE_FILE` to the path of a
+browser-exported cookies file. The helper script automatically loads this file
+when present. See the [yt-dlp cookies guide](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp)
 for instructions on exporting cookies.
 
 For details on how the modules work, test commands and production deployment see the [Developer Guide](./DEVELOPER_GUIDE.md).

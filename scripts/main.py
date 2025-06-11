@@ -7,6 +7,17 @@ from urllib.parse import urlparse
 import wave  # For checking audio properties
 from difflib import SequenceMatcher
 
+# Load environment variables from an optional .env file so users can
+# configure settings like YTDLP_COOKIE_FILE without exporting them
+# manually each time. If python-dotenv isn't installed we simply skip
+# loading the file.
+try:  # pragma: no cover - optional dependency
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except Exception:
+    pass
+
 # --- LLM & Whisper Model Imports ---
 from llama_cpp import Llama
 import whisper
