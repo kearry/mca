@@ -58,3 +58,4 @@ dev.db-journal
 /src/generated/prisma
 
 /public/generated/
+llm_debug.log

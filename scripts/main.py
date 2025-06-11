@@ -6,6 +6,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 import wave  # For checking audio properties
 from difflib import SequenceMatcher
+import logging
 
 # Load environment variables from an optional .env file so users can
 # configure settings like YTDLP_COOKIE_FILE without exporting them
@@ -41,6 +42,11 @@ WHISPER_MODEL_PATH = os.path.expanduser("~/whisper_models/base.en.pt")
 
 PUBLIC_FOLDER = Path("./public/generated")
 PUBLIC_FOLDER.mkdir(exist_ok=True, parents=True)
+
+# --- Debug logging ---
+_log_path = os.getenv("LLM_DEBUG_LOG", "llm_debug.log")
+logging.basicConfig(filename=_log_path, level=logging.DEBUG,
+                    format="%(asctime)s %(levelname)s %(message)s")
 
 # --- Model Initialization ---
 LLM_TEXT_GENERATOR = Llama(
@@ -296,22 +302,27 @@ Here is an example of the required output format:
     for i in range(0, len(context), max_context_chars):
         chunk = context[i:i + max_context_chars]
 
+        messages = [
+            {"role": "system", "content": system_prompt_template},
+            {
+                "role": "user",
+                "content": (
+                    f"Here is the content from a {source_type}. "
+                    f"Please generate the JSON array now:\n\n{chunk}"
+                ),
+            },
+        ]
+
+        logging.debug("LLM INPUT: %s", json.dumps(messages, ensure_ascii=False))
+
         chat_completion = LLM_TEXT_GENERATOR.create_chat_completion(
-            messages=[
-                {"role": "system", "content": system_prompt_template},
-                {
-                    "role": "user",
-                    "content": (
-                        f"Here is the content from a {source_type}. "
-                        f"Please generate the JSON array now:\n\n{chunk}"
-                    ),
-                },
-            ],
+            messages=messages,
             temperature=0.2,
             max_tokens=200,
         )
 
         response_content = chat_completion['choices'][0]['message']['content']
+        logging.debug("LLM OUTPUT: %s", response_content)
         print("--- RAW LLM OUTPUT ---", file=sys.stderr)
         print(response_content, file=sys.stderr)
         print("--- END RAW LLM OUTPUT ---", file=sys.stderr)
