@@ -65,15 +65,58 @@ def convert_to_wav(video_path, job_id):
         print(f"FFmpeg error: {e.stderr}", file=sys.stderr)
         raise RuntimeError(f"FFmpeg failed: {e.stderr}")
 
-def transcribe_audio(wav_path: str) -> str:
-    """Run Whisper on the provided WAV file and return the full transcript."""
+def transcribe_audio(wav_path: str) -> dict:
+    """Run Whisper on the provided WAV file and return the full result dict."""
     result = WHISPER_TRANSCRIBER.transcribe(wav_path)
     if isinstance(result, dict):
-        return result.get("text", "")
-    if isinstance(result, str):
         return result
+    if isinstance(result, str):
+        return {"text": result, "segments": []}
     # Fallback if a sequence of segments is returned
-    return " ".join(getattr(seg, "text", str(seg)) for seg in result)
+    return {
+        "text": " ".join(getattr(seg, "text", str(seg)) for seg in result),
+        "segments": [
+            {
+                "start": getattr(seg, "start", None),
+                "end": getattr(seg, "end", None),
+                "text": getattr(seg, "text", str(seg)),
+            }
+            for seg in result
+        ],
+    }
+
+def find_quote_timestamps(segments, quote):
+    """Return start and end timestamps for the first segment containing the quote."""
+    if not quote:
+        return None, None
+    target = quote.strip().lower()
+    for seg in segments:
+        text = str(seg.get("text", "")).lower()
+        if target in text:
+            return seg.get("start"), seg.get("end")
+    return None, None
+
+def extract_clip(video_path, start, end, output_path):
+    """Use ffmpeg to cut a clip from the video."""
+    command = [
+        "ffmpeg",
+        "-ss",
+        str(start),
+        "-to",
+        str(end),
+        "-i",
+        str(video_path),
+        "-c",
+        "copy",
+        "-y",
+        str(output_path),
+    ]
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"FFmpeg clip error: {e.stderr}", file=sys.stderr)
+        return False
 
 def parse_youtube(url, job_id):
     import yt_dlp
@@ -103,10 +146,12 @@ def parse_youtube(url, job_id):
     wav_path = convert_to_wav(video_path, job_id)
 
     print("Transcribing audio...", file=sys.stderr)
-    transcript_text = transcribe_audio(wav_path)
+    transcript_result = transcribe_audio(wav_path)
+    transcript_text = transcript_result.get("text", "")
+    segments = transcript_result.get("segments", [])
     print("Transcription complete.", file=sys.stderr)
 
-    return transcript_text, str(video_path)
+    return transcript_text, str(video_path), segments
 
 def parse_pdf(file_path, job_id):
     import fitz
@@ -194,12 +239,22 @@ if __name__ == "__main__":
     results = []
     try:
         if input_type == "youtube":
-            transcript_text, full_video_path = parse_youtube(input_data, job_id)
+            transcript_text, full_video_path, segments = parse_youtube(input_data, job_id)
             if not transcript_text.strip():
                 raise ValueError("Transcription failed or video contains no speech.")
             posts_data = generate_posts_from_text(transcript_text, "YouTube video")
-            if posts_data:
-                posts_data[0]['media_path'] = f"/generated/{Path(full_video_path).name}"
+            for idx, post in enumerate(posts_data):
+                quote = post.get("source_quote")
+                start, end = find_quote_timestamps(segments, quote)
+                if start is not None and end is not None:
+                    post["start_time"] = start
+                    post["end_time"] = end
+                    clip_filename = f"{job_id}_clip{idx + 1}.mp4"
+                    clip_path = PUBLIC_FOLDER / clip_filename
+                    if extract_clip(full_video_path, start, end, clip_path):
+                        post["media_path"] = f"/generated/{clip_filename}"
+                if "media_path" not in post:
+                    post["media_path"] = f"/generated/{Path(full_video_path).name}"
             results = posts_data
 
         elif input_type == "pdf":
