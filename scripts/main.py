@@ -8,7 +8,7 @@ import wave  # For checking audio properties
 
 # --- LLM & Whisper Model Imports ---
 from llama_cpp import Llama
-# DISABLED: import whisper  # Will re-enable when model issue is fixed
+from whispercpp import Whisper
 
 # --- Configuration ---
 MODEL_DIRECTORY = os.path.expanduser("~/.cache/lm-studio/models")
@@ -25,12 +25,6 @@ WHISPER_MODEL_NAME = "base.en"
 # provide that path.
 WHISPER_MODEL_PATH = os.path.expanduser("~/whisper_models/ggml-base.en.bin")
 
-# Placeholder string used while Whisper transcription is disabled.  If this
-# value is returned the script will treat it as an error and fail the job.
-PLACEHOLDER_TRANSCRIPT = (
-    "[Transcription temporarily disabled - Whisper model needs to be fixed]"
-)
-
 
 PUBLIC_FOLDER = Path("./public/generated")
 PUBLIC_FOLDER.mkdir(exist_ok=True, parents=True)
@@ -44,8 +38,12 @@ LLM_TEXT_GENERATOR = Llama(
     chat_format="qwen"
 )
 
-# DISABLED: Whisper loading until model format issue is resolved
-# WHISPER_TRANSCRIBER = None
+def _load_whisper_model():
+    """Load the Whisper model from a local GGUF/bin file if present."""
+    model_path = WHISPER_MODEL_PATH if os.path.exists(WHISPER_MODEL_PATH) else WHISPER_MODEL_NAME
+    return Whisper(model_path)
+
+WHISPER_TRANSCRIBER = _load_whisper_model()
 
 # --- Audio & Video Parsers ---
 def convert_to_wav(video_path, job_id):
@@ -65,6 +63,14 @@ def convert_to_wav(video_path, job_id):
     except subprocess.CalledProcessError as e:
         print(f"FFmpeg error: {e.stderr}", file=sys.stderr)
         raise RuntimeError(f"FFmpeg failed: {e.stderr}")
+
+def transcribe_audio(wav_path: str) -> str:
+    """Run Whisper on the provided WAV file and return the full transcript."""
+    result = WHISPER_TRANSCRIBER.transcribe(wav_path)
+    if isinstance(result, str):
+        return result
+    # Fallback if a sequence of segments is returned
+    return " ".join(getattr(seg, "text", str(seg)) for seg in result)
 
 def parse_youtube(url, job_id):
     import yt_dlp
@@ -94,14 +100,10 @@ def parse_youtube(url, job_id):
     wav_path = convert_to_wav(video_path, job_id)
 
     print("Transcribing audio...", file=sys.stderr)
-    # TEMPORARY: return placeholder text and fail the job until Whisper is enabled
-    transcript_text = PLACEHOLDER_TRANSCRIPT
-    print("Transcription complete (placeholder).", file=sys.stderr)
+    transcript_text = transcribe_audio(wav_path)
+    print("Transcription complete.", file=sys.stderr)
 
-    # If the transcript is the placeholder, raise an error so the API marks the
-    # job as failed.  This prevents returning empty posts on unsupported input.
-    raise RuntimeError("Audio transcription is currently disabled")
-    # return transcript_text, str(video_path)
+    return transcript_text, str(video_path)
 
 def parse_pdf(file_path, job_id):
     import fitz
