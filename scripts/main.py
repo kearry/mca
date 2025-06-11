@@ -16,11 +16,14 @@ MODEL_DIRECTORY = os.path.expanduser("~/.cache/lm-studio/models")
 # LLaMA-style text generator model
 LLM_MODEL_PATH = os.path.join(MODEL_DIRECTORY, "lmstudio-community/Qwen3-1.7B-GGUF/Qwen3-1.7B-Q8_0.gguf")
 
-# Whisper model identifier accepted by whispercpp
-# The library expects one of the pre-converted model names such as
-# "tiny.en", "base", "base.en", "small", etc.  Passing a path to the
-# downloaded GGUF file results in an error.
+# Whisper model identifier or path accepted by whispercpp.  We default to the
+# "base.en" model name but also allow specifying a path to a local GGUF file.
+# When a local path is provided, the helper will load that file directly.
 WHISPER_MODEL_NAME = "base.en"
+# Use a locally downloaded GGUF model if available.  The from_pretrained helper
+# accepts a path to the GGUF file so we expand the user's home directory and
+# provide that path.
+WHISPER_MODEL_PATH = os.path.expanduser("~/whisper_models/ggml-base.en.bin")
 
 PUBLIC_FOLDER = Path("./public/generated")
 PUBLIC_FOLDER.mkdir(exist_ok=True, parents=True)
@@ -36,8 +39,9 @@ LLM_TEXT_GENERATOR = Llama(
 
 # The whispercpp library provides a helper to load the pretrained model by
 # name which handles any required downloads and conversions.
-#WHISPER_TRANSCRIBER = Whisper.from_pretrained(WHISPER_MODEL_NAME)
-WHISPER_TRANSCRIBER = Whisper("~/whisper_models/ggml-base.en.bin")
+# Initialize the Whisper transcriber using the recommended helper. We supply
+# the local model path so the script uses the already downloaded GGUF file.
+WHISPER_TRANSCRIBER = Whisper.from_pretrained(WHISPER_MODEL_PATH)
 
 
 # --- Audio & Video Parsers ---
