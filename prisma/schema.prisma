@@ -29,6 +29,7 @@ model Post {
   mediaPath String? // Path to video clip or image file in /public
   startTime Float?   // For video clips
   endTime   Float?   // For video clips
+  quoteSnippet String? // Actual snippet from the source material
   pageNumber Int?     // For PDF context
   createdAt DateTime @default(now())
 }

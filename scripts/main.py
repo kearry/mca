@@ -85,16 +85,31 @@ def transcribe_audio(wav_path: str) -> dict:
         ],
     }
 
-def find_quote_timestamps(segments, quote):
-    """Return start and end timestamps for the first segment containing the quote."""
+import re
+
+def _normalize(text: str) -> str:
+    """Normalize text for fuzzy matching."""
+    return re.sub(r"[^a-z0-9\s]", "", text.lower())
+
+def find_quote_timestamps(segments, quote, window: int = 3):
+    """Return start/end times and the actual snippet covering the quote."""
     if not quote:
-        return None, None
-    target = quote.strip().lower()
-    for seg in segments:
-        text = str(seg.get("text", "")).lower()
-        if target in text:
-            return seg.get("start"), seg.get("end")
-    return None, None
+        return None, None, None
+
+    target = _normalize(quote)
+    n = len(segments)
+    for i, seg in enumerate(segments):
+        combined = seg.get("text", "")
+        start = seg.get("start")
+        end = seg.get("end")
+        for j in range(window):
+            if j > 0 and i + j < n:
+                combined += " " + segments[i + j].get("text", "")
+                end = segments[i + j].get("end", end)
+            if target in _normalize(combined):
+                snippet = combined.strip()
+                return start, end, snippet
+    return None, None, None
 
 def extract_clip(video_path, start, end, output_path):
     """Use ffmpeg to cut a clip from the video."""
@@ -245,10 +260,12 @@ if __name__ == "__main__":
             posts_data = generate_posts_from_text(transcript_text, "YouTube video")
             for idx, post in enumerate(posts_data):
                 quote = post.get("source_quote")
-                start, end = find_quote_timestamps(segments, quote)
+                start, end, snippet = find_quote_timestamps(segments, quote)
                 if start is not None and end is not None:
                     post["start_time"] = start
                     post["end_time"] = end
+                    if snippet:
+                        post["quote_snippet"] = snippet
                     clip_filename = f"{job_id}_clip{idx + 1}.mp4"
                     clip_path = PUBLIC_FOLDER / clip_filename
                     if extract_clip(full_video_path, start, end, clip_path):

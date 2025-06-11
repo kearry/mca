@@ -1,10 +1,15 @@
 import { Post } from '@prisma/client';
 
-export function SocialPostCard({ post }: { post: Post }) {
+type ExtendedPost = Post & { quoteSnippet: string | null };
+
+export function SocialPostCard({ post }: { post: ExtendedPost }) {
     return (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden my-4">
             <div className="p-4">
                 <p className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{post.content}</p>
+                {post.quoteSnippet && (
+                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">"{post.quoteSnippet}"</p>
+                )}
             </div>
             {post.mediaPath && (
                 <div className="bg-gray-100 dark:bg-gray-900 p-2">
