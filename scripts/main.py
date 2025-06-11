@@ -8,7 +8,7 @@ import wave  # For checking audio properties
 
 # --- LLM & Whisper Model Imports ---
 from llama_cpp import Llama
-from whispercpp import Whisper  # FIXED
+# DISABLED: import whisper  # Will re-enable when model issue is fixed
 
 # --- Configuration ---
 MODEL_DIRECTORY = os.path.expanduser("~/.cache/lm-studio/models")
@@ -25,6 +25,7 @@ WHISPER_MODEL_NAME = "base.en"
 # provide that path.
 WHISPER_MODEL_PATH = os.path.expanduser("~/whisper_models/ggml-base.en.bin")
 
+
 PUBLIC_FOLDER = Path("./public/generated")
 PUBLIC_FOLDER.mkdir(exist_ok=True, parents=True)
 
@@ -37,12 +38,8 @@ LLM_TEXT_GENERATOR = Llama(
     chat_format="qwen"
 )
 
-# The whispercpp library provides a helper to load the pretrained model by
-# name which handles any required downloads and conversions.
-# Initialize the Whisper transcriber using the recommended helper. We supply
-# the local model path so the script uses the already downloaded GGUF file.
-WHISPER_TRANSCRIBER = Whisper.from_pretrained(WHISPER_MODEL_PATH)
-
+# DISABLED: Whisper loading until model format issue is resolved
+# WHISPER_TRANSCRIBER = None
 
 # --- Audio & Video Parsers ---
 def convert_to_wav(video_path, job_id):
@@ -81,9 +78,9 @@ def parse_youtube(url, job_id):
     wav_path = convert_to_wav(video_path, job_id)
 
     print("Transcribing audio...", file=sys.stderr)
-    transcription = WHISPER_TRANSCRIBER.transcribe(wav_path)
-    transcript_text = transcription["text"]
-    print("Transcription complete.", file=sys.stderr)
+    # TEMPORARY: Return placeholder text instead of actual transcription
+    transcript_text = "[Transcription temporarily disabled - Whisper model needs to be fixed]"
+    print("Transcription complete (placeholder).", file=sys.stderr)
     
     return transcript_text, str(video_path)
 
