@@ -8,7 +8,7 @@ import wave  # For checking audio properties
 
 # --- LLM & Whisper Model Imports ---
 from llama_cpp import Llama
-from whispercpp import Whisper
+import whisper
 
 # --- Configuration ---
 MODEL_DIRECTORY = os.path.expanduser("~/.cache/lm-studio/models")
@@ -16,14 +16,15 @@ MODEL_DIRECTORY = os.path.expanduser("~/.cache/lm-studio/models")
 # LLaMA-style text generator model
 LLM_MODEL_PATH = os.path.join(MODEL_DIRECTORY, "lmstudio-community/Qwen3-1.7B-GGUF/Qwen3-1.7B-Q8_0.gguf")
 
-# Whisper model identifier or path accepted by whispercpp.  We default to the
-# "base.en" model name but also allow specifying a path to a local GGUF file.
-# When a local path is provided, the helper will load that file directly.
+# Whisper model identifier or path accepted by the openai-whisper library. We
+# default to the "base.en" model name but also allow specifying a path to a
+# locally downloaded model file. When a local path is provided, the helper will
+# load that file directly.
 WHISPER_MODEL_NAME = "base.en"
-# Use a locally downloaded GGUF model if available.  The from_pretrained helper
-# accepts a path to the GGUF file so we expand the user's home directory and
-# provide that path.
-WHISPER_MODEL_PATH = os.path.expanduser("~/whisper_models/ggml-base.en.bin")
+# Use a locally downloaded model if available.  The load_model helper accepts a
+# path to a model file so we expand the user's home directory and provide that
+# path.
+WHISPER_MODEL_PATH = os.path.expanduser("~/whisper_models/base.en.pt")
 
 
 PUBLIC_FOLDER = Path("./public/generated")
@@ -39,9 +40,9 @@ LLM_TEXT_GENERATOR = Llama(
 )
 
 def _load_whisper_model():
-    """Load the Whisper model from a local GGUF/bin file if present."""
+    """Load the Whisper model from a local file if present or by name."""
     model_path = WHISPER_MODEL_PATH if os.path.exists(WHISPER_MODEL_PATH) else WHISPER_MODEL_NAME
-    return Whisper(model_path)
+    return whisper.load_model(model_path)
 
 WHISPER_TRANSCRIBER = _load_whisper_model()
 
@@ -67,6 +68,8 @@ def convert_to_wav(video_path, job_id):
 def transcribe_audio(wav_path: str) -> str:
     """Run Whisper on the provided WAV file and return the full transcript."""
     result = WHISPER_TRANSCRIBER.transcribe(wav_path)
+    if isinstance(result, dict):
+        return result.get("text", "")
     if isinstance(result, str):
         return result
     # Fallback if a sequence of segments is returned
