@@ -184,7 +184,14 @@ def parse_youtube(url, job_id):
         try:
             ydl.download([url])
         except DownloadError as e:
-            raise RuntimeError(f"Failed to download video: {e}")
+            message = str(e)
+            if "Sign in to confirm" in message:
+                message += (
+                    "\nSet the YTDLP_COOKIE_FILE environment variable to the "
+                    "path of a browser-exported cookies file so yt_dlp can "
+                    "authenticate."
+                )
+            raise RuntimeError(f"Failed to download video: {message}")
     print(f"Downloaded to: {video_path}", file=sys.stderr)
 
     wav_path = convert_to_wav(video_path, job_id)
