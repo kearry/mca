@@ -25,6 +25,12 @@ WHISPER_MODEL_NAME = "base.en"
 # provide that path.
 WHISPER_MODEL_PATH = os.path.expanduser("~/whisper_models/ggml-base.en.bin")
 
+# Placeholder string used while Whisper transcription is disabled.  If this
+# value is returned the script will treat it as an error and fail the job.
+PLACEHOLDER_TRANSCRIPT = (
+    "[Transcription temporarily disabled - Whisper model needs to be fixed]"
+)
+
 
 PUBLIC_FOLDER = Path("./public/generated")
 PUBLIC_FOLDER.mkdir(exist_ok=True, parents=True)
@@ -88,11 +94,14 @@ def parse_youtube(url, job_id):
     wav_path = convert_to_wav(video_path, job_id)
 
     print("Transcribing audio...", file=sys.stderr)
-    # TEMPORARY: Return placeholder text instead of actual transcription
-    transcript_text = "[Transcription temporarily disabled - Whisper model needs to be fixed]"
+    # TEMPORARY: return placeholder text and fail the job until Whisper is enabled
+    transcript_text = PLACEHOLDER_TRANSCRIPT
     print("Transcription complete (placeholder).", file=sys.stderr)
-    
-    return transcript_text, str(video_path)
+
+    # If the transcript is the placeholder, raise an error so the API marks the
+    # job as failed.  This prevents returning empty posts on unsupported input.
+    raise RuntimeError("Audio transcription is currently disabled")
+    # return transcript_text, str(video_path)
 
 def parse_pdf(file_path, job_id):
     import fitz
@@ -160,9 +169,12 @@ Here is an example of the required output format:
             return list(data.values())[0]
         return data
     except Exception as e:
+        # Propagate a clear error so the caller can fail the job instead of
+        # continuing with empty results.
+        error_msg = f"Failed to parse LLM output: {e}. Raw output: {response_content}"
         print(f"Error parsing JSON output: {e}", file=sys.stderr)
         print(f"Raw output: {response_content}", file=sys.stderr)
-        return []
+        raise ValueError(error_msg)
 
 # --- Main Execution ---
 if __name__ == "__main__":
