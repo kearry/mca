@@ -1,0 +1,2 @@
+whispercpp==0.0.17
+llama-cpp-python

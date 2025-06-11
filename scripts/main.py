@@ -36,7 +36,9 @@ LLM_TEXT_GENERATOR = Llama(
 
 # The whispercpp library provides a helper to load the pretrained model by
 # name which handles any required downloads and conversions.
-WHISPER_TRANSCRIBER = Whisper.from_pretrained(WHISPER_MODEL_NAME)
+#WHISPER_TRANSCRIBER = Whisper.from_pretrained(WHISPER_MODEL_NAME)
+WHISPER_TRANSCRIBER = Whisper("~/whisper_models/ggml-base.en.bin")
+
 
 # --- Audio & Video Parsers ---
 def convert_to_wav(video_path, job_id):
