@@ -99,6 +99,25 @@ def transcribe_audio(wav_path: str) -> dict:
 
 import re
 
+def _extract_json(text: str):
+    """Extract the first JSON object or array found in *text*."""
+    decoder = json.JSONDecoder()
+    text = text.strip()
+    # Remove Markdown-style code fences if present
+    if text.startswith("```"):
+        text = re.sub(r"^```\w*\n", "", text)
+        if text.endswith("```"):
+            text = text[:-3]
+
+    for idx, ch in enumerate(text):
+        if ch in "[{":
+            try:
+                obj, _ = decoder.raw_decode(text[idx:])
+                return obj
+            except json.JSONDecodeError:
+                continue
+    raise ValueError("No JSON object found in LLM output.")
+
 def _normalize(text: str) -> str:
     """Normalize text for fuzzy matching."""
     return re.sub(r"[^a-z0-9\s]", "", text.lower())
@@ -241,7 +260,7 @@ def generate_posts_from_text(context, source_type):
     system_prompt_template = """You are a viral social media content creator. Your task is to analyze the provided text and extract key quotes, ideas, and concepts.
 For each extracted item, create a short, engaging social media post.
 You MUST provide your output as a valid JSON array of objects.
-Do not output any other text, explanations, or markdown formatting. Your entire response must be only the raw JSON.
+Respond with ONLY the JSON text – no Markdown, explanations or other prose. If you cannot generate content, return an empty JSON array `[]`.
 Each object in the array must have the following keys:
 - "post_text": A string containing the social media post content (max 280 characters), including relevant hashtags.
 - "source_quote": The exact quote or phrase from the source text that inspired the post.
@@ -291,13 +310,7 @@ Here is an example of the required output format:
         print("--- END RAW LLM OUTPUT ---", file=sys.stderr)
 
         try:
-            if response_content.strip().startswith("```json"):
-                response_content = response_content.strip()[7:-3]
-            json_match = re.search(r"(\{.*\}|\[.*\])", response_content, re.S)
-            if not json_match:
-                raise ValueError("No JSON object found in LLM output.")
-            response_content = json_match.group(0)
-            data = json.loads(response_content)
+            data = _extract_json(response_content)
             if isinstance(data, dict) and len(data) == 1 and isinstance(list(data.values())[0], list):
                 posts = list(data.values())[0]
             else:
