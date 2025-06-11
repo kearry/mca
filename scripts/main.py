@@ -212,33 +212,48 @@ def parse_pdf(file_path, job_id):
 
 # --- LLM Post Generation ---
 def generate_posts_from_text(context, source_type):
-    system_prompt = """You are a viral social media content creator. Your task is to analyze the provided text and extract key quotes, ideas, and concepts.
+    system_prompt_template = """You are a viral social media content creator. Your task is to analyze the provided text and extract key quotes, ideas, and concepts.
 For each extracted item, create a short, engaging social media post.
 You MUST provide your output as a valid JSON array of objects.
 Do not output any other text, explanations, or markdown formatting. Your entire response must be only the raw JSON.
 Each object in the array must have the following keys:
 - "post_text": A string containing the social media post content (max 280 characters), including relevant hashtags.
 - "source_quote": The exact quote or phrase from the source text that inspired the post.
-If the source is a PDF with page numbers (e.g., "--- Page 5 ---"), you MUST also include:
+
+If the source is a PDF and the input includes page number markers (e.g., "--- Page 5 ---"), you MUST also include:
 - "page_number": The integer page number where the content was found.
+
+The input text may be a chunk of a larger document. Focus on extracting relevant information from this specific chunk.
+
 Here is an example of the required output format:
 [
   {
     "post_text": "Mind-blowing insight! The key to success is not just hard work, but smart work. #Productivity #Success",
     "source_quote": "The key to success is not just hard work, but smart work"
   }
-]
 """
-    chat_completion = LLM_TEXT_GENERATOR.create_chat_completion(
+
+    # Estimate tokens per character roughly
+    chars_per_token = 4
+    # Max tokens for the content after accounting for system prompt, user prompt, and output
+    max_context_tokens = 4096 - (len(system_prompt_template) + 200) # Added buffer for user prompt and output
+    max_context_chars = max_context_tokens * chars_per_token
+
+    all_posts = []
+    # Split context into chunks
+    for i in range(0, len(context), max_context_chars):
+        chunk = context[i:i + max_context_chars]
+
+        chat_completion = LLM_TEXT_GENERATOR.create_chat_completion(
         messages=[
-            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": system_prompt_template},
             {"role": "user", "content": f"Here is the content from a {source_type}. Please generate the JSON array now:\n\n{context}"},
         ],
         temperature=0.2,
-        max_tokens=2048,
+        max_tokens=4096,
     )
-    
-    response_content = chat_completion['choices'][0]['message']['content']
+
+        response_content = chat_completion['choices'][0]['message']['content']
     print("--- RAW LLM OUTPUT ---", file=sys.stderr)
     print(response_content, file=sys.stderr)
     print("--- END RAW LLM OUTPUT ---", file=sys.stderr)
