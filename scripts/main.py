@@ -245,13 +245,19 @@ Here is an example of the required output format:
         chunk = context[i:i + max_context_chars]
 
         chat_completion = LLM_TEXT_GENERATOR.create_chat_completion(
-        messages=[
-            {"role": "system", "content": system_prompt_template},
-            {"role": "user", "content": f"Here is the content from a {source_type}. Please generate the JSON array now:\n\n{context}"},
-        ],
-        temperature=0.2,
-        max_tokens=4096,
-    )
+            messages=[
+                {"role": "system", "content": system_prompt_template},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Here is the content from a {source_type}. "
+                        f"Please generate the JSON array now:\n\n{chunk}"
+                    ),
+                },
+            ],
+            temperature=0.2,
+            max_tokens=200,
+        )
 
         response_content = chat_completion['choices'][0]['message']['content']
     print("--- RAW LLM OUTPUT ---", file=sys.stderr)
