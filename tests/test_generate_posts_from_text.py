@@ -67,5 +67,14 @@ class GeneratePostsTests(unittest.TestCase):
         self.assertEqual(len(posts), 1)
         self.assertEqual(posts[0]["post_text"], "tagged")
 
+    def test_stray_closing_tag(self):
+        stub = StubLLM([
+            '[{\"post_text\": \"tagless\", \"source_quote\": \"bar\"}]</think>'
+        ])
+        main.LLM_TEXT_GENERATOR = stub
+        posts = main.generate_posts_from_text("hello", "text")
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0]["post_text"], "tagless")
+
 if __name__ == "__main__":
     unittest.main()

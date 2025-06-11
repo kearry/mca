@@ -108,7 +108,8 @@ def _extract_json(text: str):
     text = text.strip()
     # Remove any <think>...</think> commentary that may precede the JSON
     text = _THINK_TAG_RE.sub("", text)
-    text = text.replace("<think>", "")  # handle stray opening tag
+    text = text.replace("<think>", "")   # handle stray opening tag
+    text = text.replace("</think>", "")  # handle stray closing tag
     # Remove Markdown-style code fences if present
     if text.startswith("```"):
         text = re.sub(r"^```\w*\n", "", text)
