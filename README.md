@@ -26,4 +26,7 @@ Below is a quick start summary.
 
 Open [http://localhost:3000](http://localhost:3000) to access the web interface. Upload a PDF, paste text or provide a YouTube URL and the backend will generate sample posts in `public/generated/`.
 
+If downloading a YouTube video fails because authentication is required, set the
+`YTDLP_COOKIE_FILE` environment variable to a cookies file exported from your browser.
+
 For details on how the modules work, test commands and production deployment see the [Developer Guide](./DEVELOPER_GUIDE.md).
