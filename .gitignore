@@ -39,3 +39,20 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Local LLM Models (if you put them here)
+# We put them in ~/llm_models, so this is just for reference
+# llm_models/
+
+# SQLite database
+dev.db
+dev.db-journal
+
+# Temp files
+*.tmp
+
+/src/generated/prisma

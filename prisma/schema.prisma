@@ -1,0 +1,34 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Job {
+  id          String   @id @default(cuid())
+  inputType   String // "youtube", "pdf", "text"
+  inputData   String // URL, file path, or first 200 chars of text
+  status      String   @default("pending") // pending, processing, complete, failed
+  error       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  posts       Post[]
+}
+
+model Post {
+  id        String   @id @default(cuid())
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id])
+  content   String
+  mediaPath String? // Path to video clip or image file in /public
+  startTime Float?   // For video clips
+  endTime   Float?   // For video clips
+  pageNumber Int?     // For PDF context
+  createdAt DateTime @default(now())
+}
