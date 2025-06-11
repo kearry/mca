@@ -91,21 +91,33 @@ def _normalize(text: str) -> str:
     """Normalize text for fuzzy matching."""
     return re.sub(r"[^a-z0-9\s]", "", text.lower())
 
-def find_quote_timestamps(segments, quote, window: int = 3):
-    """Return start/end times and the actual snippet covering the quote."""
+def find_quote_timestamps(segments, quote, window: int = 8):
+    """Return start/end times and the actual snippet covering the quote.
+
+    The original implementation used a very small sliding window which often
+    failed to match longer quotes spanning several Whisper segments.  This
+    expanded approach searches a larger window and builds the candidate snippet
+    incrementally so longer phrases can be located reliably.
+    """
     if not quote:
         return None, None, None
 
     target = _normalize(quote)
     n = len(segments)
-    for i, seg in enumerate(segments):
-        combined = seg.get("text", "")
-        start = seg.get("start")
-        end = seg.get("end")
+    for i in range(n):
+        combined = ""
+        start = None
+        end = None
         for j in range(window):
-            if j > 0 and i + j < n:
-                combined += " " + segments[i + j].get("text", "")
-                end = segments[i + j].get("end", end)
+            if i + j >= n:
+                break
+            seg = segments[i + j]
+            if start is None:
+                start = seg.get("start")
+            end = seg.get("end", end)
+            if combined:
+                combined += " "
+            combined += seg.get("text", "")
             if target in _normalize(combined):
                 snippet = combined.strip()
                 return start, end, snippet
