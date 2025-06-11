@@ -16,8 +16,11 @@ MODEL_DIRECTORY = os.path.expanduser("~/.cache/lm-studio/models")
 # LLaMA-style text generator model
 LLM_MODEL_PATH = os.path.join(MODEL_DIRECTORY, "lmstudio-community/Qwen3-1.7B-GGUF/Qwen3-1.7B-Q8_0.gguf")
 
-# Whisper GGUF model
-WHISPER_MODEL_PATH = os.path.join(MODEL_DIRECTORY, "whisper-v1.1-base-en.gguf")
+# Whisper model identifier accepted by whispercpp
+# The library expects one of the pre-converted model names such as
+# "tiny.en", "base", "base.en", "small", etc.  Passing a path to the
+# downloaded GGUF file results in an error.
+WHISPER_MODEL_NAME = "base.en"
 
 PUBLIC_FOLDER = Path("./public/generated")
 PUBLIC_FOLDER.mkdir(exist_ok=True, parents=True)
@@ -31,9 +34,9 @@ LLM_TEXT_GENERATOR = Llama(
     chat_format="qwen"
 )
 
-# The whispercpp library forbids direct instantiation via the constructor.
-# Use the provided helper to load pretrained weights.
-WHISPER_TRANSCRIBER = Whisper.from_pretrained(WHISPER_MODEL_PATH)
+# The whispercpp library provides a helper to load the pretrained model by
+# name which handles any required downloads and conversions.
+WHISPER_TRANSCRIBER = Whisper.from_pretrained(WHISPER_MODEL_NAME)
 
 # --- Audio & Video Parsers ---
 def convert_to_wav(video_path, job_id):
