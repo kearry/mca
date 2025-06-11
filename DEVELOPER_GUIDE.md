@@ -93,7 +93,7 @@ The script accepts three arguments:
 python scripts/main.py <input_type> <input_data> <job_id>
 ```
 `<input_type>` is `youtube`, `pdf` or `text`. `<input_data>` is a URL, file path or text. `<job_id>` can be any identifier (the web app generates one automatically).
-If a YouTube video requires authentication, set the `YTDLP_COOKIE_FILE` environment variable to the path of your browser's cookies file so `yt_dlp` can authenticate.
+If a YouTube video requires authentication, set the `YTDLP_COOKIE_FILE` environment variable to the path of a cookies file exported from your browser so `yt_dlp` can authenticate. Consult the [yt-dlp documentation](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp) for tips on exporting cookies.
 Example:
 ```bash
 python scripts/main.py youtube https://www.youtube.com/watch?v=dQw4w9WgXcQ test123
