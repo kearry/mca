@@ -293,8 +293,9 @@ Here is an example of the required output format:
 
     # Estimate tokens per character roughly
     chars_per_token = 4
+    output_token_buffer = 512
     # Max tokens for the content after accounting for system prompt, user prompt, and output
-    max_context_tokens = 4096 - (len(system_prompt_template) + 200) # Added buffer for user prompt and output
+    max_context_tokens = 4096 - (len(system_prompt_template) + output_token_buffer)
     max_context_chars = max_context_tokens * chars_per_token
 
     all_posts = []
@@ -318,7 +319,7 @@ Here is an example of the required output format:
         chat_completion = LLM_TEXT_GENERATOR.create_chat_completion(
             messages=messages,
             temperature=0.2,
-            max_tokens=200,
+            max_tokens=output_token_buffer,
         )
 
         response_content = chat_completion['choices'][0]['message']['content']
