@@ -1,2 +1,2 @@
-whispercpp==0.0.17
+openai-whisper
 llama-cpp-python
