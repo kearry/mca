@@ -293,10 +293,10 @@ Here is an example of the required output format:
         try:
             if response_content.strip().startswith("```json"):
                 response_content = response_content.strip()[7:-3]
-            json_start_index = response_content.find('[')
-            if json_start_index == -1:
-                json_start_index = response_content.find('{')
-            response_content = response_content[json_start_index:]
+            json_match = re.search(r"(\{.*\}|\[.*\])", response_content, re.S)
+            if not json_match:
+                raise ValueError("No JSON object found in LLM output.")
+            response_content = json_match.group(0)
             data = json.loads(response_content)
             if isinstance(data, dict) and len(data) == 1 and isinstance(list(data.values())[0], list):
                 posts = list(data.values())[0]
