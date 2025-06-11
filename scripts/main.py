@@ -63,13 +63,23 @@ def convert_to_wav(video_path, job_id):
 def parse_youtube(url, job_id):
     import yt_dlp
 
+    class _Logger:
+        def debug(self, msg):
+            pass
+        def warning(self, msg):
+            pass
+        def error(self, msg):
+            print(msg, file=sys.stderr)
+
     print("Downloading YouTube video...", file=sys.stderr)
     video_path = PUBLIC_FOLDER / f"{job_id}_full.mp4"
     ydl_opts = {
         'format': 'bv+ba/b',
         'outtmpl': str(video_path),
         'quiet': True,
+        'no_warnings': True,
         'merge_output_format': 'mp4',
+        'logger': _Logger(),
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
