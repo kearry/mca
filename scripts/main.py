@@ -156,6 +156,7 @@ def extract_clip(video_path, start, end, output_path):
 
 def parse_youtube(url, job_id):
     import yt_dlp
+    from yt_dlp.utils import DownloadError
 
     class _Logger:
         def debug(self, msg):
@@ -175,8 +176,15 @@ def parse_youtube(url, job_id):
         'merge_output_format': 'mp4',
         'logger': _Logger(),
     }
+    cookie_file = os.getenv("YTDLP_COOKIE_FILE")
+    if cookie_file and os.path.exists(cookie_file):
+        print(f"Using cookies from {cookie_file}", file=sys.stderr)
+        ydl_opts['cookiefile'] = cookie_file
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
+        try:
+            ydl.download([url])
+        except DownloadError as e:
+            raise RuntimeError(f"Failed to download video: {e}")
     print(f"Downloaded to: {video_path}", file=sys.stderr)
 
     wav_path = convert_to_wav(video_path, job_id)
