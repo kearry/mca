@@ -118,6 +118,7 @@ export async function POST(req: NextRequest) {
                                 jobId: job.id,
                                 content: post.post_text,
                                 mediaPath: post.media_path,
+                                quoteSnippet: post.quote_snippet,
                                 startTime: post.start_time,
                                 endTime: post.end_time,
                                 pageNumber: post.page_number,

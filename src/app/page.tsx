@@ -2,6 +2,8 @@
 
 import { useState, FormEvent, useEffect, useRef } from 'react';
 import { Job, Post } from '@prisma/client';
+
+type ExtendedPost = Post & { quoteSnippet: string | null };
 import { SocialPostCard } from '@/components/SocialPostCard';
 
 type InputType = 'youtube' | 'pdf' | 'text';
@@ -12,14 +14,14 @@ export default function HomePage() {
     const [pdfFile, setPdfFile] = useState<File | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [jobId, setJobId] = useState<string | null>(null);
-    const [jobResult, setJobResult] = useState<(Job & { posts: Post[] }) | null>(null);
+    const [jobResult, setJobResult] = useState<(Job & { posts: ExtendedPost[] }) | null>(null);
     const [error, setError] = useState<string | null>(null);
     const pollInterval = useRef<NodeJS.Timeout | null>(null);
 
     const pollJobStatus = async (id: string) => {
         try {
             const res = await fetch(`/api/process?jobId=${id}`);
-            const data: Job & { posts: Post[] } = await res.json();
+            const data: Job & { posts: ExtendedPost[] } = await res.json();
             
             if (data.status === 'complete' || data.status === 'failed') {
                 setIsLoading(false);
