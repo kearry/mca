@@ -99,10 +99,16 @@ def transcribe_audio(wav_path: str) -> dict:
 
 import re
 
+# Remove paired <think>...</think> blocks that some LLMs prepend.
+_THINK_TAG_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+
 def _extract_json(text: str):
     """Extract the first JSON object or array found in *text*."""
     decoder = json.JSONDecoder()
     text = text.strip()
+    # Remove any <think>...</think> commentary that may precede the JSON
+    text = _THINK_TAG_RE.sub("", text)
+    text = text.replace("<think>", "")  # handle stray opening tag
     # Remove Markdown-style code fences if present
     if text.startswith("```"):
         text = re.sub(r"^```\w*\n", "", text)

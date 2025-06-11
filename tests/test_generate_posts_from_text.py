@@ -58,5 +58,14 @@ class GeneratePostsTests(unittest.TestCase):
         self.assertEqual(len(posts), 1)
         self.assertEqual(posts[0]["post_text"], "foo")
 
+    def test_json_wrapped_in_tags(self):
+        stub = StubLLM([
+            "<think>doing stuff</think>[{\"post_text\": \"tagged\", \"source_quote\": \"bar\"}]"
+        ])
+        main.LLM_TEXT_GENERATOR = stub
+        posts = main.generate_posts_from_text("hello", "text")
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0]["post_text"], "tagged")
+
 if __name__ == "__main__":
     unittest.main()
