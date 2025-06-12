@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import prisma from '@/lib/prisma';
 import { spawn } from 'child_process';
 import path from 'path';
 import os from 'os';
 import fs from 'fs/promises';
-
-const prisma = new PrismaClient();
 
 // Helper to parse multipart form data
 const parseForm = async (
