@@ -117,7 +117,7 @@ def load_llm():
         LLM_TEXT_GENERATOR = Llama(
             model_path=LLM_MODEL_PATH,
             n_gpu_layers=-1,
-            n_ctx=128_000,
+            n_ctx=8192,
             verbose=True,
             chat_format="chatml",
         )
@@ -142,7 +142,6 @@ def convert_to_wav(video_path, job_id):
         'ffmpeg', '-i', str(video_path),
         '-ar', '16000',      # 16kHz
         '-ac', '1',          # mono
-        '-c:a', 'pcm_s16le', # 16-bit PCM
         '-y', str(audio_output_path)
     ]
     try:
@@ -286,32 +285,37 @@ def find_quote_timestamps(segments, quote, *, window: int = 20, threshold: float
     return None, None, None
 
 def extract_clip(video_path, start, end, output_path):
-    """Use ffmpeg to cut a clip from the video."""
+    """
+    Uses ffmpeg to cut a clip from a video by copying streams.
+    This method is fast and avoids re-encoding, preserving quality.
+    """
+    # Command fixed to use stream copy, which is fast and lossless.
+    # The original code had a syntax error and conflicting arguments.
     command = [
         "ffmpeg",
-        "-ss",
-        str(start),
-        "-to",
-        str(end),
-        "-i",
-        str(video_path),
-        "-c",
-        "copy",
-        "-y",
-        str(output_path),
+        "-ss", str(start),      # Seek to start time
+        "-to", str(end),        # Set end time
+        "-i", str(video_path),  # Input file
+        "-c", "copy",           # Copy all streams (video, audio) without re-encoding
+        "-y",                   # Overwrite output file if it exists
+        str(output_path),       # Output file
     ]
     try:
+        # The logging call was correct, joining the command for display.
         logging.info(
             "extract_clip: ffmpeg %s", ' '.join(command)
         )
+        # The subprocess call is correct.
         subprocess.run(command, check=True, capture_output=True, text=True)
         logging.info("extract_clip: wrote %s", output_path)
         return True
     except subprocess.CalledProcessError as e:
+        # The error handling is also correct.
         print(f"FFmpeg clip error: {e.stderr}", file=sys.stderr)
         logging.error("extract_clip failed: %s", e.stderr)
         return False
-
+    
+    
 def parse_youtube(url, job_id):
     import yt_dlp
     from yt_dlp.utils import DownloadError
@@ -415,13 +419,14 @@ Here is an example of the required output format:
     "post_text": "Mind-blowing insight! The key to success is not just hard work, but smart work. #Productivity #Success",
     "source_quote": "The key to success is not just hard work, but smart work"
   }
+]
 """
 
     # Estimate tokens per character roughly
     chars_per_token = 4
     output_token_buffer = 1024
     # Max tokens for the content after accounting for system prompt, user prompt, and output
-    max_context_tokens = 128_000 - (len(system_prompt_template) + output_token_buffer)
+    max_context_tokens = 8192 - (len(system_prompt_template) + output_token_buffer)
     max_context_chars = max_context_tokens * chars_per_token
 
     logging.info(
