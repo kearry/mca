@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { spawn } from 'child_process';
 import path from 'path';
+import { isPdfFile } from '@/lib/isPdfFile';
 import os from 'os';
 import fs from 'fs/promises';
 
@@ -26,7 +27,11 @@ const parseForm = async (
             const tempFilePath = path.join(tempDir, safeName);
             const buffer = Buffer.from(await file.arrayBuffer());
             await fs.writeFile(tempFilePath, buffer);
-            files[key] = { filepath: tempFilePath, originalFilename: safeName };
+            files[key] = {
+                filepath: tempFilePath,
+                originalFilename: safeName,
+                mimetype: file.type || ''
+            };
         } else {
             fields[key] = value;
         }
@@ -45,7 +50,16 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'inputType is required' }, { status: 400 });
         }
 
-        // 1. Create a Job in the database
+        if (inputType === 'pdf') {
+            const uploaded = files.pdfFile;
+            const isPdf = uploaded && isPdfFile(uploaded.originalFilename, uploaded.mimetype);
+            if (!isPdf) {
+                await fs.rm(tempDir, { recursive: true, force: true });
+                return NextResponse.json({ error: 'Only PDF uploads are allowed' }, { status: 400 });
+            }
+        }
+
+       // 1. Create a Job in the database
         let inputDataValue = '';
         if (inputType === 'youtube') inputDataValue = url;
         if (inputType === 'text') inputDataValue = text.substring(0, 200);
