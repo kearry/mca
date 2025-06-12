@@ -466,6 +466,8 @@ Here is an example of the required output format:
             if isinstance(data, dict):
                 if len(data) == 1 and isinstance(list(data.values())[0], list):
                     posts = list(data.values())[0]
+                elif "post_text" in data and "source_quote" in data:
+                    posts = [data]
                 else:
                     raise ValueError(
                         "JSON object does not contain a single list value"
