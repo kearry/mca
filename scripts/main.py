@@ -40,7 +40,8 @@ WHISPER_MODEL_NAME = "base.en"
 WHISPER_MODEL_PATH = os.path.expanduser("~/whisper_models/base.en.pt")
 
 
-PUBLIC_FOLDER = Path("./public/generated")
+# Folder where generated media assets are stored under the repository root
+PUBLIC_FOLDER = Path(__file__).resolve().parents[1] / "public" / "generated"
 PUBLIC_FOLDER.mkdir(exist_ok=True, parents=True)
 
 # --- Debug logging ---
