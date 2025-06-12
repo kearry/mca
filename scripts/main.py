@@ -198,6 +198,20 @@ def _normalize(text: str) -> str:
     """Normalize text for fuzzy matching."""
     return re.sub(r"[^a-z0-9\s]", "", text.lower())
 
+
+def deduplicate_posts(posts: list[dict]) -> list[dict]:
+    """Remove posts that share the same ``source_quote``."""
+    seen = set()
+    unique = []
+    for post in posts:
+        quote = post.get("source_quote")
+        if quote and quote in seen:
+            continue
+        if quote:
+            seen.add(quote)
+        unique.append(post)
+    return unique
+
 def find_quote_timestamps(segments, quote, *, window: int = 20, threshold: float = 0.6):
     """Return start/end times and the snippet most similar to the quote.
 
@@ -340,6 +354,7 @@ Respond with ONLY the JSON text – no Markdown, explanations or other prose. If
 Each object in the array must have the following keys:
 - "post_text": A string containing the social media post content (max 280 characters), including relevant hashtags.
 - "source_quote": The exact quote or phrase from the source text that inspired the post.
+- Each `source_quote` value must be unique across the array; do not repeat the same quote for multiple posts.
 
 If the source is a PDF and the input includes page number markers (e.g., "--- Page 5 ---"), you MUST also include:
 - "page_number": The integer page number where the content was found.
@@ -435,6 +450,7 @@ if __name__ == "__main__":
             if not transcript_text.strip():
                 raise ValueError("Transcription failed or video contains no speech.")
             posts_data = generate_posts_from_text(transcript_text, "YouTube video")
+            posts_data = deduplicate_posts(posts_data)
             for idx, post in enumerate(posts_data):
                 quote = post.get("source_quote")
                 start, end, snippet = find_quote_timestamps(segments, quote)
@@ -454,6 +470,7 @@ if __name__ == "__main__":
         elif input_type == "pdf":
             text, image_paths = parse_pdf(input_data, job_id)
             posts_data = generate_posts_from_text(text, "PDF document")
+            posts_data = deduplicate_posts(posts_data)
             for post in posts_data:
                 page = post.get('page_number')
                 if page:
@@ -463,7 +480,7 @@ if __name__ == "__main__":
             results = posts_data
 
         elif input_type == "text":
-            results = generate_posts_from_text(input_data, "text document")
+            results = deduplicate_posts(generate_posts_from_text(input_data, "text document"))
 
         print(json.dumps({"status": "complete", "posts": results}))
 

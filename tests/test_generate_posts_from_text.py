@@ -76,5 +76,16 @@ class GeneratePostsTests(unittest.TestCase):
         self.assertEqual(len(posts), 1)
         self.assertEqual(posts[0]["post_text"], "tagless")
 
+    def test_deduplicate_posts_by_quote(self):
+        posts = [
+            {"post_text": "a", "source_quote": "same"},
+            {"post_text": "b", "source_quote": "same"},
+            {"post_text": "c", "source_quote": "other"},
+        ]
+        result = main.deduplicate_posts(posts)
+        self.assertEqual(len(result), 2)
+        quotes = {p["source_quote"] for p in result}
+        self.assertEqual(quotes, {"same", "other"})
+
 if __name__ == "__main__":
     unittest.main()
