@@ -8,31 +8,39 @@ import fs from 'fs/promises';
 const prisma = new PrismaClient();
 
 // Helper to parse multipart form data
-const parseForm = async (req: NextRequest): Promise<{ fields: any; files: any }> => {
+const parseForm = async (
+    req: NextRequest
+): Promise<{ fields: any; files: any; tempDir: string }> => {
     const formData = await req.formData();
     const fields: { [key: string]: any } = {};
     const files: { [key: string]: any } = {};
 
+    // Create a unique temporary directory for this request
+    const tempDir = await fs.mkdtemp(
+        path.join(os.tmpdir(), 'content-app-uploads-')
+    );
+
     for (const [key, value] of formData.entries()) {
-        if (typeof value === 'object' && 'name' in value) { // It's a file
+        if (typeof value === 'object' && 'name' in value) {
+            // It's a file
             const file = value as File;
-            const tempDir = path.join(os.tmpdir(), 'content-app-uploads');
-            await fs.mkdir(tempDir, { recursive: true });
-            const tempFilePath = path.join(tempDir, file.name);
+            const safeName = path.basename(file.name);
+            const tempFilePath = path.join(tempDir, safeName);
             const buffer = Buffer.from(await file.arrayBuffer());
             await fs.writeFile(tempFilePath, buffer);
-            files[key] = { filepath: tempFilePath, originalFilename: file.name };
+            files[key] = { filepath: tempFilePath, originalFilename: safeName };
         } else {
             fields[key] = value;
         }
     }
-    return { fields, files };
+
+    return { fields, files, tempDir };
 };
 
 
 export async function POST(req: NextRequest) {
     try {
-        const { fields, files } = await parseForm(req);
+        const { fields, files, tempDir } = await parseForm(req);
         const { inputType, text, url } = fields;
 
         if (!inputType) {
@@ -161,10 +169,8 @@ export async function POST(req: NextRequest) {
                 });
             }
 
-            // Clean up temp PDF file
-            if (inputType === 'pdf' && files.pdfFile) {
-                await fs.unlink(files.pdfFile.filepath);
-            }
+            // Clean up temporary directory and files
+            await fs.rm(tempDir, { recursive: true, force: true });
         });
 
         // 3. Immediately return the Job ID to the frontend
