@@ -90,16 +90,17 @@ The API creates a **Job** when a request begins and fills the **Post** table wit
 
 ## Running the Python script directly
 
-The script accepts three arguments:
+The script accepts four arguments:
 ```bash
-python scripts/main.py <input_type> <input_data> <job_id>
+python scripts/main.py <input_type> <input_data> <job_id> [llm_model]
 ```
-`<input_type>` is `youtube`, `pdf` or `text`. `<input_data>` is a URL, file path or text. `<job_id>` can be any identifier (the web app generates one automatically).
+`<input_type>` is `youtube`, `pdf` or `text`. `<input_data>` is a URL, file path or text. `<job_id>` can be any identifier (the web app generates one automatically). `[llm_model]` is `phi` or `gemini` and defaults to `phi`.
 If a YouTube video requires authentication, create a `.env` file in the project
 root with `YTDLP_COOKIE_FILE` set to the path of a browser-exported cookies
 file. The Python helper automatically loads `.env` if present. Consult the
 [yt-dlp documentation](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp)
 for tips on exporting cookies.
+Set `GOOGLE_API_KEY` when using the Gemini model.
 Example:
 ```bash
 python scripts/main.py youtube https://www.youtube.com/watch?v=dQw4w9WgXcQ test123

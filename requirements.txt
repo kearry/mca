@@ -1,3 +1,4 @@
 openai-whisper
 llama-cpp-python
 python-dotenv
+google-generativeai
