@@ -60,11 +60,18 @@ export function SocialPostCard({ post: initialPost }: { post: ExtendedPost }) {
                     </button>
                 </div>
             )}
-            <div className="px-4 py-2 bg-gray-50 dark:bg-gray-700/50 text-xs text-gray-500 dark:text-gray-400">
-                {post.startTime !== null && post.endTime !== null && (
-                    <span>Source: {post.startTime.toFixed(1)}s - {post.endTime.toFixed(1)}s</span>
+            <div className="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-gray-700/50 text-xs text-gray-500 dark:text-gray-400">
+                <div>
+                    {post.startTime !== null && post.endTime !== null && (
+                        <span>Source: {post.startTime.toFixed(1)}s - {post.endTime.toFixed(1)}s</span>
+                    )}
+                    {post.pageNumber !== null && <span className="ml-2">Source: Page {post.pageNumber}</span>}
+                </div>
+                {post.mediaPath && post.mediaPath.endsWith('.mp4') && (
+                    <a href={post.mediaPath} download className="text-blue-600 hover:underline">
+                        Download Clip
+                    </a>
                 )}
-                {post.pageNumber !== null && <span>Source: Page {post.pageNumber}</span>}
             </div>
         </div>
     );
