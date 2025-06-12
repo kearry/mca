@@ -57,6 +57,7 @@ The project uses SQLite via Prisma. Two tables form the main data model:
   - `id` *(string, primary key)* – unique identifier created by Prisma.
   - `inputType` *(string)* – `youtube`, `pdf` or `text`.
   - `inputData` *(string)* – URL, file path or text snippet.
+  - `inputChecksum` *(string, optional)* – SHA256 of the input used to detect duplicate submissions.
   - `status` *(string)* – job state: `pending`, `processing`, `complete` or `failed`.
   - `error` *(string, optional)* – reason if the job fails.
   - `createdAt` and `updatedAt` timestamps.
@@ -84,6 +85,7 @@ The API creates a **Job** when a request begins and fills the **Post** table wit
   - `generate_posts_from_text()` – sends content to the LLaMA model and parses the returned JSON posts.
   - The script's `__main__` block orchestrates these helpers according to the input type and prints JSON results.
 - **`src/app/api/process/route.ts`** contains the Next.js API route. Its `POST` handler saves a job in the database, spawns `main.py`, then parses its output into `Post` records. The `GET` handler lets the frontend poll job status.
+- The handler checks the SHA256 checksum of uploaded files (or the URL for YouTube inputs) and reuses existing jobs when a duplicate submission is detected.
 - **`src/components/SocialPostCard.tsx`** renders each generated post and any associated media.
 
 ## Running the Python script directly
