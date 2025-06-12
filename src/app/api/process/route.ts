@@ -40,6 +40,32 @@ const parseForm = async (
     return { fields, files, tempDir };
 };
 
+// Helper used by tests and the close handler to build a final error message
+// from the script's stderr output. When the exit code is non-zero the code is
+// appended to the error string.
+export const buildErrorMessage = (
+    scriptError: string,
+    code: number | null
+): string => {
+    const errorLines = scriptError.trim().split('\n');
+    const lastLine = errorLines[errorLines.length - 1];
+
+    let errorMessage = 'Unknown Python script error.';
+    try {
+        const errorResult = JSON.parse(lastLine);
+        if (errorResult && (errorResult as any).error) {
+            errorMessage = (errorResult as any).error;
+        }
+    } catch (e) {
+        errorMessage = lastLine || scriptError.substring(0, 500);
+    }
+
+    if (code && code !== 0) {
+        errorMessage += ` (exit code: ${code})`;
+    }
+    return errorMessage;
+};
+
 
 export async function POST(req: NextRequest) {
     try {
@@ -146,24 +172,7 @@ export async function POST(req: NextRequest) {
                         });
                     }
                 } else {
-                    // --- THIS IS THE CORRECTED ERROR HANDLING BLOCK ---
-                    // Split the error output by lines and get the last non-empty line
-                    const errorLines = scriptError.trim().split('\n');
-                    const lastLine = errorLines[errorLines.length - 1];
-
-                    let errorMessage = 'Unknown Python script error.';
-                    try {
-                        // Only try to parse the last line as JSON
-                        const errorResult = JSON.parse(lastLine);
-                        if (errorResult && errorResult.error) {
-                            errorMessage = errorResult.error;
-                        }
-                    } catch (e) {
-                        // If parsing fails, use the last line as a raw error message,
-                        // or a snippet of the full error log.
-                        errorMessage = lastLine || scriptError.substring(0, 500);
-                    }
-
+                    const errorMessage = buildErrorMessage(scriptError, code);
                     await prisma.job.update({
                         where: { id: job.id },
                         data: {
@@ -171,7 +180,6 @@ export async function POST(req: NextRequest) {
                             error: errorMessage,
                         },
                     });
-                    // ----------------------------------------------------
                 }
             } catch (dbError: any) {
                 console.error("Database update error:", dbError);
