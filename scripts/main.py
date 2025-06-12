@@ -52,6 +52,7 @@ PUBLIC_FOLDER.mkdir(exist_ok=True, parents=True)
 # --- Helpers to reuse existing output ---
 def _get_db_path() -> str | None:
     """Return the absolute path of the SQLite database if available."""
+    logging.debug("_get_db_path: checking DATABASE_URL")
     db_url = os.getenv("DATABASE_URL")
     if not db_url:
         return None
@@ -60,11 +61,13 @@ def _get_db_path() -> str | None:
     if db_url.startswith("./"):
         root = Path(__file__).resolve().parents[1]
         db_url = str(root / db_url[2:])
+    logging.debug("_get_db_path: resolved path %s", db_url)
     return db_url
 
 
 def load_existing_posts(job_id: str) -> list[dict]:
     """Load posts for *job_id* from the database if present."""
+    logging.info("load_existing_posts: job_id=%s", job_id)
     db_path = _get_db_path()
     if not db_path or not os.path.exists(db_path):
         return []
@@ -78,7 +81,7 @@ def load_existing_posts(job_id: str) -> list[dict]:
         rows = cur.fetchall()
         conn.close()
     except Exception as exc:  # pragma: no cover - DB access is optional
-        logging.error("Failed loading existing posts: %s", exc)
+        logging.error("load_existing_posts error: %s", exc)
         return []
 
     posts = []
@@ -92,12 +95,14 @@ def load_existing_posts(job_id: str) -> list[dict]:
             "page_number": row["pageNumber"],
         }
         posts.append({k: v for k, v in post.items() if v is not None})
+    logging.info("load_existing_posts: loaded %d posts", len(posts))
     return posts
 
 # --- Debug logging ---
 _log_path = os.getenv("LLM_DEBUG_LOG", "llm_debug.log")
 logging.basicConfig(filename=_log_path, level=logging.DEBUG,
                     format="%(asctime)s %(levelname)s %(message)s")
+logging.info("Logging initialized at %s", _log_path)
 
 # --- Model Initialization ---
 LLM_TEXT_GENERATOR = None
@@ -108,6 +113,7 @@ def load_llm():
     """Initialize and return the global LLM text generator."""
     global LLM_TEXT_GENERATOR
     if LLM_TEXT_GENERATOR is None:
+        logging.info("Loading LLM model from %s", LLM_MODEL_PATH)
         LLM_TEXT_GENERATOR = Llama(
             model_path=LLM_MODEL_PATH,
             n_gpu_layers=-1,
@@ -115,6 +121,7 @@ def load_llm():
             verbose=True,
             chat_format="chatml",
         )
+        logging.info("LLM model loaded")
     return LLM_TEXT_GENERATOR
 
 
@@ -123,7 +130,9 @@ def load_whisper():
     global WHISPER_TRANSCRIBER
     if WHISPER_TRANSCRIBER is None:
         model_path = WHISPER_MODEL_PATH if os.path.exists(WHISPER_MODEL_PATH) else WHISPER_MODEL_NAME
+        logging.info("Loading Whisper model %s", model_path)
         WHISPER_TRANSCRIBER = whisper.load_model(model_path)
+        logging.info("Whisper model loaded")
     return WHISPER_TRANSCRIBER
 
 # --- Audio & Video Parsers ---
@@ -137,18 +146,23 @@ def convert_to_wav(video_path, job_id):
         '-y', str(audio_output_path)
     ]
     try:
+        logging.info("convert_to_wav: running ffmpeg %s", ' '.join(command))
         print("Converting video to WAV for Whisper...", file=sys.stderr)
         subprocess.run(command, check=True, capture_output=True, text=True)
         print("Conversion successful.", file=sys.stderr)
+        logging.info("convert_to_wav: wrote %s", audio_output_path)
         return str(audio_output_path)
     except subprocess.CalledProcessError as e:
         print(f"FFmpeg error: {e.stderr}", file=sys.stderr)
+        logging.error("convert_to_wav failed: %s", e.stderr)
         raise RuntimeError(f"FFmpeg failed: {e.stderr}")
 
 def transcribe_audio(wav_path: str) -> dict:
     """Run Whisper on the provided WAV file and return the full result dict."""
     whisper_model = load_whisper()
+    logging.info("transcribe_audio: starting on %s", wav_path)
     result = whisper_model.transcribe(wav_path)
+    logging.info("transcribe_audio: finished")
     if isinstance(result, dict):
         return result
     if isinstance(result, str):
@@ -173,6 +187,7 @@ _THINK_TAG_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 def _extract_json(text: str):
     """Extract the first JSON object or array found in *text*."""
+    logging.debug("_extract_json input: %s", text[:200])
     decoder = json.JSONDecoder()
     text = text.strip()
     # Remove any <think>...</think> commentary that may precede the JSON
@@ -192,6 +207,7 @@ def _extract_json(text: str):
                 return obj
             except json.JSONDecodeError:
                 continue
+    logging.error("_extract_json: failed to find JSON")
     raise ValueError("No JSON object found in LLM output.")
 
 def _normalize(text: str) -> str:
@@ -201,6 +217,7 @@ def _normalize(text: str) -> str:
 
 def deduplicate_posts(posts: list[dict]) -> list[dict]:
     """Remove posts that share the same ``source_quote``."""
+    logging.info("deduplicate_posts: starting with %d posts", len(posts))
     seen = set()
     unique = []
     for post in posts:
@@ -210,6 +227,7 @@ def deduplicate_posts(posts: list[dict]) -> list[dict]:
         if quote:
             seen.add(quote)
         unique.append(post)
+    logging.info("deduplicate_posts: returning %d posts", len(unique))
     return unique
 
 def find_quote_timestamps(segments, quote, *, window: int = 20, threshold: float = 0.6):
@@ -220,6 +238,7 @@ def find_quote_timestamps(segments, quote, *, window: int = 20, threshold: float
     similarity. The best scoring snippet is returned if its ratio meets or
     exceeds ``threshold``. Otherwise ``(None, None, None)`` is returned.
     """
+    logging.debug("find_quote_timestamps: searching for '%s'", quote)
     if not quote:
         return None, None, None
 
@@ -249,7 +268,9 @@ def find_quote_timestamps(segments, quote, *, window: int = 20, threshold: float
                 best_result = (start, end, combined.strip())
 
     if best_ratio >= threshold:
+        logging.debug("find_quote_timestamps: found %s-%s (score %.2f)", best_result[0], best_result[1], best_ratio)
         return best_result
+    logging.debug("find_quote_timestamps: no match")
     return None, None, None
 
 def extract_clip(video_path, start, end, output_path):
@@ -268,10 +289,15 @@ def extract_clip(video_path, start, end, output_path):
         str(output_path),
     ]
     try:
+        logging.info(
+            "extract_clip: ffmpeg %s", ' '.join(command)
+        )
         subprocess.run(command, check=True, capture_output=True, text=True)
+        logging.info("extract_clip: wrote %s", output_path)
         return True
     except subprocess.CalledProcessError as e:
         print(f"FFmpeg clip error: {e.stderr}", file=sys.stderr)
+        logging.error("extract_clip failed: %s", e.stderr)
         return False
 
 def parse_youtube(url, job_id):
@@ -286,6 +312,7 @@ def parse_youtube(url, job_id):
         def error(self, msg):
             print(msg, file=sys.stderr)
 
+    logging.info("parse_youtube: downloading %s", url)
     print("Downloading YouTube video...", file=sys.stderr)
     video_path = PUBLIC_FOLDER / f"{job_id}_full.mp4"
     ydl_opts = {
@@ -312,20 +339,28 @@ def parse_youtube(url, job_id):
                     "authenticate."
                 )
             raise RuntimeError(f"Failed to download video: {message}")
+    logging.info("parse_youtube: downloaded to %s", video_path)
     print(f"Downloaded to: {video_path}", file=sys.stderr)
 
     wav_path = convert_to_wav(video_path, job_id)
 
+    logging.info("parse_youtube: transcribing")
     print("Transcribing audio...", file=sys.stderr)
     transcript_result = transcribe_audio(wav_path)
     transcript_text = transcript_result.get("text", "")
     segments = transcript_result.get("segments", [])
+    logging.info(
+        "parse_youtube: transcription complete (%d chars, %d segments)",
+        len(transcript_text),
+        len(segments),
+    )
     print("Transcription complete.", file=sys.stderr)
 
     return transcript_text, str(video_path), segments
 
 def parse_pdf(file_path, job_id):
     import fitz
+    logging.info("parse_pdf: opening %s", file_path)
     doc = fitz.open(file_path)
     full_text = ""
     image_paths = []
@@ -343,6 +378,7 @@ def parse_pdf(file_path, job_id):
             with open(img_path, "wb") as f:
                 f.write(image_bytes)
             image_paths.append({"path": f"/generated/{img_filename}", "page": page_num + 1})
+    logging.info("parse_pdf: extracted %d pages, %d images", doc.page_count, len(image_paths))
     return full_text, image_paths
 
 # --- LLM Post Generation ---
@@ -376,11 +412,17 @@ Here is an example of the required output format:
     max_context_tokens = 4096 - (len(system_prompt_template) + output_token_buffer)
     max_context_chars = max_context_tokens * chars_per_token
 
+    logging.info(
+        "generate_posts_from_text: %d chars from %s", len(context), source_type
+    )
     llm = load_llm()
     all_posts = []
     # Split context into chunks
     for i in range(0, len(context), max_context_chars):
         chunk = context[i:i + max_context_chars]
+        logging.debug(
+            "generate_posts_from_text: processing chunk %d-%d", i, i + len(chunk)
+        )
 
         messages = [
             {"role": "system", "content": system_prompt_template},
@@ -422,10 +464,14 @@ Here is an example of the required output format:
             print(f"Raw output: {response_content}", file=sys.stderr)
             raise ValueError(error_msg)
 
+    logging.info(
+        "generate_posts_from_text: produced %d posts", len(all_posts)
+    )
     return all_posts
 
 # --- Main Execution ---
 if __name__ == "__main__":
+    logging.info("script start: %s", sys.argv)
     if len(sys.argv) < 4:
         print(json.dumps({"status": "failed", "error": "Internal error: Incorrect script arguments."}), file=sys.stderr)
         sys.exit(1)
@@ -437,6 +483,7 @@ if __name__ == "__main__":
     existing_posts = load_existing_posts(job_id)
     existing_media = list(PUBLIC_FOLDER.glob(f"{job_id}_*"))
     if existing_posts or existing_media:
+        logging.info("Reusing existing output for job %s", job_id)
         print(json.dumps({"status": "complete", "posts": existing_posts}))
         sys.exit(0)
 
@@ -445,6 +492,7 @@ if __name__ == "__main__":
 
     results = []
     try:
+        logging.info("processing %s input", input_type)
         if input_type == "youtube":
             transcript_text, full_video_path, segments = parse_youtube(input_data, job_id)
             if not transcript_text.strip():
@@ -482,10 +530,12 @@ if __name__ == "__main__":
         elif input_type == "text":
             results = deduplicate_posts(generate_posts_from_text(input_data, "text document"))
 
+        logging.info("script complete for job %s", job_id)
         print(json.dumps({"status": "complete", "posts": results}))
 
     except Exception as e:
         import traceback
         error_message = f"An unexpected error occurred: {str(e)}"
+        logging.error("script error: %s", error_message)
         print(json.dumps({"status": "failed", "error": error_message}), file=sys.stderr)
         sys.exit(1)
