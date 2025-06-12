@@ -1,6 +1,7 @@
 "use client";
 
 import { Post } from '@prisma/client';
+import Image from 'next/image';
 import { useState } from 'react';
 
 type ExtendedPost = Post & { quoteSnippet: string | null };
@@ -31,7 +32,7 @@ export function SocialPostCard({ post: initialPost }: { post: ExtendedPost }) {
             <div className="p-4">
                 <p className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{post.content}</p>
                 {post.quoteSnippet && (
-                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">"{post.quoteSnippet}"</p>
+                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">&ldquo;{post.quoteSnippet}&rdquo;</p>
                 )}
             </div>
             {post.mediaPath ? (
@@ -39,7 +40,13 @@ export function SocialPostCard({ post: initialPost }: { post: ExtendedPost }) {
                     {post.mediaPath.endsWith('.mp4') ? (
                         <video controls src={post.mediaPath} className="w-full rounded-md" />
                     ) : (
-                        <img src={post.mediaPath} alt="Extracted from source" className="w-full rounded-md" />
+                        <Image
+                            src={post.mediaPath}
+                            alt="Extracted from source"
+                            width={800}
+                            height={600}
+                            className="w-full rounded-md"
+                        />
                     )}
                 </div>
             ) : (
