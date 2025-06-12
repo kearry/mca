@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 import wave  # For checking audio properties
 from difflib import SequenceMatcher
 import logging
+import sqlite3
 
 # Load environment variables from an optional .env file so users can
 # configure settings like YTDLP_COOKIE_FILE without exporting them
@@ -43,6 +44,51 @@ WHISPER_MODEL_PATH = os.path.expanduser("~/whisper_models/base.en.pt")
 # Folder where generated media assets are stored under the repository root
 PUBLIC_FOLDER = Path(__file__).resolve().parents[1] / "public" / "generated"
 PUBLIC_FOLDER.mkdir(exist_ok=True, parents=True)
+
+# --- Helpers to reuse existing output ---
+def _get_db_path() -> str | None:
+    """Return the absolute path of the SQLite database if available."""
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        return None
+    if db_url.startswith("file:"):
+        db_url = db_url[5:]
+    if db_url.startswith("./"):
+        root = Path(__file__).resolve().parents[1]
+        db_url = str(root / db_url[2:])
+    return db_url
+
+
+def load_existing_posts(job_id: str) -> list[dict]:
+    """Load posts for *job_id* from the database if present."""
+    db_path = _get_db_path()
+    if not db_path or not os.path.exists(db_path):
+        return []
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cur = conn.execute(
+            "SELECT content, mediaPath, quoteSnippet, startTime, endTime, pageNumber FROM Post WHERE jobId = ?",
+            (job_id,),
+        )
+        rows = cur.fetchall()
+        conn.close()
+    except Exception as exc:  # pragma: no cover - DB access is optional
+        logging.error("Failed loading existing posts: %s", exc)
+        return []
+
+    posts = []
+    for row in rows:
+        post = {
+            "post_text": row["content"],
+            "media_path": row["mediaPath"],
+            "quote_snippet": row["quoteSnippet"],
+            "start_time": row["startTime"],
+            "end_time": row["endTime"],
+            "page_number": row["pageNumber"],
+        }
+        posts.append({k: v for k, v in post.items() if v is not None})
+    return posts
 
 # --- Debug logging ---
 _log_path = os.getenv("LLM_DEBUG_LOG", "llm_debug.log")
@@ -365,12 +411,18 @@ if __name__ == "__main__":
         print(json.dumps({"status": "failed", "error": "Internal error: Incorrect script arguments."}), file=sys.stderr)
         sys.exit(1)
 
-    load_llm()
-    load_whisper()
-
     input_type = sys.argv[1]
     input_data = sys.argv[2]
     job_id = sys.argv[3]
+
+    existing_posts = load_existing_posts(job_id)
+    existing_media = list(PUBLIC_FOLDER.glob(f"{job_id}_*"))
+    if existing_posts or existing_media:
+        print(json.dumps({"status": "complete", "posts": existing_posts}))
+        sys.exit(0)
+
+    load_llm()
+    load_whisper()
 
     results = []
     try:

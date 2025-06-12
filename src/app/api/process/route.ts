@@ -85,11 +85,22 @@ export async function POST(req: NextRequest) {
             }
         }
 
-       // 1. Create a Job in the database
+       // 1. Determine input identifier and check for existing completed job
         let inputDataValue = '';
         if (inputType === 'youtube') inputDataValue = url;
         if (inputType === 'text') inputDataValue = text.substring(0, 200);
         if (inputType === 'pdf') inputDataValue = files.pdfFile?.originalFilename || 'uploaded.pdf';
+
+        const existing = await prisma.job.findFirst({
+            where: { inputType, inputData: inputDataValue, status: 'complete' },
+            select: { id: true },
+        });
+
+        if (existing) {
+            // Reuse previously generated results
+            await fs.rm(tempDir, { recursive: true, force: true });
+            return NextResponse.json({ jobId: existing.id }, { status: 200 });
+        }
 
         const job = await prisma.job.create({
             data: {
