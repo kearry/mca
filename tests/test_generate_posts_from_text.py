@@ -76,6 +76,16 @@ class GeneratePostsTests(unittest.TestCase):
         self.assertEqual(len(posts), 1)
         self.assertEqual(posts[0]["post_text"], "tagless")
 
+    def test_instruction_echo_with_example_array(self):
+        output = ("You are a bot. Return an empty JSON array [] if you cannot comply. "
+            "Actual data: [{\"post_text\": \"ok\", \"source_quote\": \"q\"}]")
+        stub = StubLLM([output])
+        main.load_llm = lambda: stub
+        posts = main.generate_posts_from_text("hello", "text")
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0]["post_text"], "ok")
+
+
     def test_deduplicate_posts_by_quote(self):
         posts = [
             {"post_text": "a", "source_quote": "same"},
