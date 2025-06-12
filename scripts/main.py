@@ -31,7 +31,7 @@ MODEL_DIRECTORY = os.path.expanduser("~/.cache/lm-studio/models")
 # Default to the DeepSeek-R1 1.5B model downloaded by LM Studio.
 LLM_MODEL_PATH = os.path.join(
     MODEL_DIRECTORY,
-    "lmstudio-community/deepseek-r1-1.5b-GGUF/deepseek-r1-1.5b-Q8_0.gguf",
+    "unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/DeepSeek-R1-Distill-Qwen-1.5B-Q8_0.gguf",
 )
 
 # Whisper model identifier or path accepted by the openai-whisper library. We
@@ -113,7 +113,7 @@ def load_llm():
             n_gpu_layers=-1,
             n_ctx=4096,
             verbose=True,
-            chat_format="deepseek",
+            chat_format="chatml",
         )
     return LLM_TEXT_GENERATOR
 
@@ -356,7 +356,7 @@ Here is an example of the required output format:
 
     # Estimate tokens per character roughly
     chars_per_token = 4
-    output_token_buffer = 512
+    output_token_buffer = 1024
     # Max tokens for the content after accounting for system prompt, user prompt, and output
     max_context_tokens = 4096 - (len(system_prompt_template) + output_token_buffer)
     max_context_chars = max_context_tokens * chars_per_token
