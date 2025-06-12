@@ -186,7 +186,12 @@ import re
 _THINK_TAG_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 def _extract_json(text: str):
-    """Extract the first JSON object or array found in *text*."""
+    """Extract the most relevant JSON object or array found in *text*.
+
+    Some models may echo the system prompt which includes example JSON like
+    ``[]``. We therefore scan the entire string and return the **largest** valid
+    JSON object/array found rather than the first occurrence.
+    """
     logging.debug("_extract_json input: %s", text[:200])
     decoder = json.JSONDecoder()
     text = text.strip()
@@ -200,13 +205,20 @@ def _extract_json(text: str):
         if text.endswith("```"):
             text = text[:-3]
 
+    best_obj = None
+    best_len = -1
     for idx, ch in enumerate(text):
         if ch in "[{":
             try:
-                obj, _ = decoder.raw_decode(text[idx:])
-                return obj
+                obj, end = decoder.raw_decode(text[idx:])
             except json.JSONDecodeError:
                 continue
+            length = end
+            if length > best_len:
+                best_obj = obj
+                best_len = length
+    if best_obj is not None:
+        return best_obj
     logging.error("_extract_json: failed to find JSON")
     raise ValueError("No JSON object found in LLM output.")
 
