@@ -71,7 +71,9 @@ export const buildErrorMessage = (
 
 export async function POST(req: NextRequest) {
     try {
+        console.log('POST /api/process received');
         const { fields, files, tempDir } = await parseForm(req);
+        console.log('Form fields:', fields);
         const { inputType, text, url } = fields;
 
         if (!inputType) {
@@ -122,6 +124,7 @@ export async function POST(req: NextRequest) {
                 status: 'processing',
             },
         });
+        console.log('Created job', job.id);
 
         // 2. Prepare and run the Python script
         const pythonScriptPath = path.resolve(process.cwd(), 'scripts/main.py');
@@ -151,6 +154,7 @@ export async function POST(req: NextRequest) {
             throw new Error("Invalid input type");
         }
 
+        console.log('Running script', pythonScriptPath, scriptArgs.join(' '));
         const pythonProcess = spawn(venvPython, [pythonScriptPath, ...scriptArgs]);
 
         pythonProcess.on('error', async (err) => {
@@ -166,6 +170,7 @@ export async function POST(req: NextRequest) {
 
         pythonProcess.stdout.on('data', (data) => {
             scriptOutput += data.toString();
+            console.log('python stdout:', data.toString());
         });
 
         pythonProcess.stderr.on('data', (data) => {
@@ -174,6 +179,7 @@ export async function POST(req: NextRequest) {
         });
 
         pythonProcess.on('close', async (code) => {
+            console.log('Python process exited with code', code);
             try {
                 if (code === 0 && scriptOutput) {
                     const result = JSON.parse(scriptOutput);
@@ -228,6 +234,7 @@ export async function POST(req: NextRequest) {
 
 // GET endpoint to poll for job status
 export async function GET(req: NextRequest) {
+    console.log('GET /api/process');
     const { searchParams } = new URL(req.url);
     const jobId = searchParams.get('jobId');
 
@@ -241,6 +248,7 @@ export async function GET(req: NextRequest) {
     });
 
     if (!job) {
+        console.log('Job not found', jobId);
         return NextResponse.json({ error: 'Job not found' }, { status: 404 });
     }
 
