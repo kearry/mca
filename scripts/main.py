@@ -372,6 +372,53 @@ def extract_clip(video_path, start, end, output_path, watermark_path=None):
         return False
     
     
+def fetch_youtube_transcript(url, languages=("en",)):
+    """Return transcript text and segment timings if YouTube provides them."""
+
+    try:  # pragma: no cover - optional dependency
+        from youtube_transcript_api import YouTubeTranscriptApi
+    except Exception:
+        logging.info("youtube_transcript_api not installed")
+        return None, None
+
+    video_id = None
+    m = re.search(r"(?:v=|/)([0-9A-Za-z_-]{11})(?:[?&]|$)", url)
+    if m:
+        video_id = m.group(1)
+    if not video_id:
+        logging.info("Could not extract video id from %s", url)
+        return None, None
+
+    try:
+        transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
+        transcript = None
+        for lang in languages:
+            try:
+                transcript = transcripts.find_manually_created_transcript([lang])
+                break
+            except Exception:
+                pass
+        if transcript is None:
+            for lang in languages:
+                try:
+                    transcript = transcripts.find_generated_transcript([lang])
+                    break
+                except Exception:
+                    pass
+        if transcript is None:
+            return None, None
+        items = transcript.fetch()
+        segments = [
+            {"start": it["start"], "end": it["start"] + it["duration"], "text": it["text"]}
+            for it in items
+        ]
+        text = " ".join(it["text"] for it in items)
+        return text, segments
+    except Exception as e:
+        logging.info("fetch_youtube_transcript failed: %s", e)
+        return None, None
+
+
 def parse_youtube(url, job_id):
     import yt_dlp
     from yt_dlp.utils import DownloadError
@@ -383,6 +430,9 @@ def parse_youtube(url, job_id):
             pass
         def error(self, msg):
             print(msg, file=sys.stderr)
+
+    logging.info("parse_youtube: checking transcripts for %s", url)
+    transcript_text, segments = fetch_youtube_transcript(url)
 
     logging.info("parse_youtube: downloading %s", url)
     print("Downloading YouTube video...", file=sys.stderr)
@@ -419,19 +469,26 @@ def parse_youtube(url, job_id):
     logging.info("parse_youtube: downloaded to %s", video_path)
     print(f"Downloaded to: {video_path}", file=sys.stderr)
 
-    wav_path = convert_to_wav(video_path, job_id)
+    if not transcript_text:
+        wav_path = convert_to_wav(video_path, job_id)
 
-    logging.info("parse_youtube: transcribing")
-    print("Transcribing audio...", file=sys.stderr)
-    transcript_result = transcribe_audio(wav_path)
-    transcript_text = transcript_result.get("text", "")
-    segments = transcript_result.get("segments", [])
-    logging.info(
-        "parse_youtube: transcription complete (%d chars, %d segments)",
-        len(transcript_text),
-        len(segments),
-    )
-    print("Transcription complete.", file=sys.stderr)
+        logging.info("parse_youtube: transcribing")
+        print("Transcribing audio...", file=sys.stderr)
+        transcript_result = transcribe_audio(wav_path)
+        transcript_text = transcript_result.get("text", "")
+        segments = transcript_result.get("segments", [])
+        logging.info(
+            "parse_youtube: transcription complete (%d chars, %d segments)",
+            len(transcript_text),
+            len(segments),
+        )
+        print("Transcription complete.", file=sys.stderr)
+    else:
+        logging.info(
+            "parse_youtube: using existing transcript (%d chars, %d segments)",
+            len(transcript_text),
+            len(segments),
+        )
 
     return transcript_text, str(video_path), segments
 

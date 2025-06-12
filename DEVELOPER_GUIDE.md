@@ -80,7 +80,7 @@ The API creates a **Job** when a request begins and fills the **Post** table wit
   - `transcribe_audio()` – runs the Whisper model and returns a transcript and segment timings.
   - `find_quote_timestamps()` – searches transcription segments to locate quoted phrases and returns their start and end times.
   - `extract_clip()` – uses ffmpeg to cut a short video clip for a given time window.
-  - `parse_youtube()` – downloads YouTube videos, transcribes them and returns text plus segments.
+  - `parse_youtube()` – downloads YouTube videos and returns text plus segments. If captions are available the script uses them directly, otherwise it falls back to Whisper transcription.
   - `parse_pdf()` – extracts text and inline images from PDFs so posts can reference page numbers or images.
   - `generate_posts_from_text()` – sends content to the LLaMA model and parses the returned JSON posts.
   - The script's `__main__` block orchestrates these helpers according to the input type and prints JSON results.

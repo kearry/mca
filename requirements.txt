@@ -2,3 +2,5 @@ openai-whisper
 llama-cpp-python
 python-dotenv
 google-generativeai
+yt-dlp
+youtube-transcript-api
