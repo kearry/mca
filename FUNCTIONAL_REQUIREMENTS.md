@@ -51,5 +51,5 @@ This document summarizes the primary functional capabilities provided by the app
 - The `generate_posts_from_text()` helper sends content to the LLaMA text generator and parses the JSON response.
 - Each chunk is passed along with a system prompt that instructs the model to output **only** a JSON array.
 - Every array object must include `post_text` and `source_quote` fields and may include a `page_number` when processing PDFs.
-- Long inputs are automatically split into chunks that fit within the 4k token context window. Each chunk is processed sequentially and the resulting posts are combined.
+- Long inputs are automatically split into chunks that fit within the 128k token context window. Each chunk is processed sequentially and the resulting posts are combined.
 
