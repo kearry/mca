@@ -28,10 +28,10 @@ import whisper
 MODEL_DIRECTORY = os.path.expanduser("~/.cache/lm-studio/models")
 
 # LLaMA-style text generator model
-# Default to the DeepSeek-R1 1.5B model downloaded by LM Studio.
+# Default to the Phi-3.1-mini model with a 128k token context window
 LLM_MODEL_PATH = os.path.join(
     MODEL_DIRECTORY,
-    "unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/DeepSeek-R1-Distill-Qwen-1.5B-Q8_0.gguf",
+    "lmstudio-community/Phi-3.1-mini-128k-instruct-GGUF/Phi-3.1-mini-128k-instruct-Q4_K_M.gguf",
 )
 
 # Whisper model identifier or path accepted by the openai-whisper library. We
@@ -117,7 +117,7 @@ def load_llm():
         LLM_TEXT_GENERATOR = Llama(
             model_path=LLM_MODEL_PATH,
             n_gpu_layers=-1,
-            n_ctx=4096,
+            n_ctx=128_000,
             verbose=True,
             chat_format="chatml",
         )
@@ -421,7 +421,7 @@ Here is an example of the required output format:
     chars_per_token = 4
     output_token_buffer = 1024
     # Max tokens for the content after accounting for system prompt, user prompt, and output
-    max_context_tokens = 4096 - (len(system_prompt_template) + output_token_buffer)
+    max_context_tokens = 128_000 - (len(system_prompt_template) + output_token_buffer)
     max_context_chars = max_context_tokens * chars_per_token
 
     logging.info(

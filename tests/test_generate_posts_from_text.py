@@ -38,7 +38,7 @@ class GeneratePostsTests(unittest.TestCase):
         func = main.generate_posts_from_text
         system_prompt = func.__code__.co_consts[1]
         chars_per_token = func.__code__.co_consts[2]
-        max_context_tokens = 4096 - (len(system_prompt) + 512)
+        max_context_tokens = 128_000 - (len(system_prompt) + 512)
         max_context_chars = max_context_tokens * chars_per_token
 
         context = "x" * (max_context_chars + 10)
