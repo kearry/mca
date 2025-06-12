@@ -36,6 +36,11 @@ browser-exported cookies file. The helper script automatically loads this file
 when present. See the [yt-dlp cookies guide](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp)
 for instructions on exporting cookies.
 
+You can also reduce the size of downloaded videos by limiting the format used by
+`yt_dlp`. Set `YTDLP_VIDEO_FORMAT` in your environment to a format string (for
+example `bestvideo[height<=720]+bestaudio/best[height<=720]`). This value
+defaults to that 720p-limited string when unset.
+
 To use the Gemini 2.5 Pro Preview model set `GOOGLE_API_KEY` in your environment.
 The home page lets you pick either the local Phi model or Gemini from a drop‑down.
 

@@ -387,8 +387,13 @@ def parse_youtube(url, job_id):
     logging.info("parse_youtube: downloading %s", url)
     print("Downloading YouTube video...", file=sys.stderr)
     video_path = PUBLIC_FOLDER / f"{job_id}_full.mp4"
+    video_format = os.getenv(
+        "YTDLP_VIDEO_FORMAT",
+        "bestvideo[height<=720]+bestaudio/best[height<=720]",
+    )
+    logging.info("parse_youtube: using format %s", video_format)
     ydl_opts = {
-        'format': 'bv+ba/b',
+        'format': video_format,
         'outtmpl': str(video_path),
         'quiet': True,
         'no_warnings': True,
