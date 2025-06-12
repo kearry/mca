@@ -337,7 +337,7 @@ def extract_clip(video_path, start, end, output_path, watermark_path=None):
             "-i",
             str(watermark_path),
             "-filter_complex",
-            "[0:v][1:v] overlay=main_w-overlay_w-10:10",
+            "[1:v]scale=400:-1[wm];[0:v][wm]overlay=0:0",
             "-map",
             "0:a?",
         ]
