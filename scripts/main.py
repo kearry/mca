@@ -285,18 +285,21 @@ def find_quote_timestamps(segments, quote, *, window: int = 20, threshold: float
     return None, None, None
 
 def extract_clip(video_path, start, end, output_path):
+    """Extract a clip from ``video_path`` between ``start`` and ``end``.
+
+    ``ffmpeg`` is invoked with output seeking so the clip begins at the exact
+    timestamp.  Streams are re-encoded to keep audio and video perfectly in sync
+    even when ``start`` does not land on a keyframe.
     """
-    Uses ffmpeg to cut a clip from a video by copying streams.
-    This method is fast and avoids re-encoding, preserving quality.
-    """
-    # Command fixed to use stream copy, which is fast and lossless.
-    # The original code had a syntax error and conflicting arguments.
+
     command = [
         "ffmpeg",
-        "-ss", str(start),      # Seek to start time
-        "-to", str(end),        # Set end time
         "-i", str(video_path),  # Input file
-        "-c", "copy",           # Copy all streams (video, audio) without re-encoding
+        "-ss", str(start),      # Output seek start time for frame-accurate cut
+        "-to", str(end),        # Output seek end time
+        "-c:v", "libx264",      # Re-encode video to ensure sync
+        "-c:a", "aac",          # Re-encode audio
+        "-movflags", "+faststart",  # Allow fast playback start
         "-y",                   # Overwrite output file if it exists
         str(output_path),       # Output file
     ]
