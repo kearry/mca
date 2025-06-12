@@ -100,6 +100,9 @@ root with `YTDLP_COOKIE_FILE` set to the path of a browser-exported cookies
 file. The Python helper automatically loads `.env` if present. Consult the
 [yt-dlp documentation](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp)
 for tips on exporting cookies.
+To limit the resolution (and thus file size) of downloaded videos, set
+`YTDLP_VIDEO_FORMAT` to a yt_dlp format string. It defaults to
+`bestvideo[height<=720]+bestaudio/best[height<=720]`.
 Set `GOOGLE_API_KEY` when using the Gemini model.
 Example:
 ```bash
