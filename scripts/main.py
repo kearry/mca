@@ -114,22 +114,50 @@ logging.info("Logging initialized at %s", _log_path)
 
 # --- Model Initialization ---
 LLM_TEXT_GENERATOR = None
+LLM_BACKEND = None
 WHISPER_TRANSCRIBER = None
 
 
-def load_llm():
-    """Initialize and return the global LLM text generator."""
-    global LLM_TEXT_GENERATOR
-    if LLM_TEXT_GENERATOR is None:
-        logging.info("Loading LLM model from %s", LLM_MODEL_PATH)
-        LLM_TEXT_GENERATOR = Llama(
-            model_path=LLM_MODEL_PATH,
-            n_gpu_layers=-1,
-            n_ctx=8192,
-            verbose=True,
-            chat_format="chatml",
+class GeminiLLM:
+    def __init__(self, model_name: str = "gemini-2.5-pro-preview"):
+        import google.generativeai as genai  # pragma: no cover - optional
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            raise RuntimeError("GOOGLE_API_KEY not set")
+        genai.configure(api_key=api_key)
+        self.model = genai.GenerativeModel(model_name)
+
+    def create_chat_completion(self, messages, temperature: float, max_tokens: int):
+        prompt = "\n".join(m["content"] for m in messages)
+        resp = self.model.generate_content(
+            prompt,
+            generation_config={
+                "temperature": temperature,
+                "max_output_tokens": max_tokens,
+            },
         )
-        logging.info("LLM model loaded")
+        return {"choices": [{"message": {"content": resp.text}}]}
+
+
+def load_llm(backend: str | None = None):
+    """Initialize and return the global LLM text generator."""
+    global LLM_TEXT_GENERATOR, LLM_BACKEND
+    backend = backend or os.getenv("LLM_BACKEND", "phi")
+    if LLM_TEXT_GENERATOR is None or backend != LLM_BACKEND:
+        LLM_BACKEND = backend
+        if backend == "gemini":
+            logging.info("Loading Gemini model")
+            LLM_TEXT_GENERATOR = GeminiLLM()
+        else:
+            logging.info("Loading LLaMA model from %s", LLM_MODEL_PATH)
+            LLM_TEXT_GENERATOR = Llama(
+                model_path=LLM_MODEL_PATH,
+                n_gpu_layers=-1,
+                n_ctx=8192,
+                verbose=True,
+                chat_format="chatml",
+            )
+        logging.info("LLM model loaded: %s", backend)
     return LLM_TEXT_GENERATOR
 
 
@@ -537,6 +565,7 @@ if __name__ == "__main__":
     input_type = sys.argv[1]
     input_data = sys.argv[2]
     job_id = sys.argv[3]
+    llm_backend = sys.argv[4] if len(sys.argv) >= 5 else "phi"
 
     existing_posts = load_existing_posts(job_id)
     existing_media = list(PUBLIC_FOLDER.glob(f"{job_id}_*"))
@@ -545,7 +574,7 @@ if __name__ == "__main__":
         print(json.dumps({"status": "complete", "posts": existing_posts}))
         sys.exit(0)
 
-    load_llm()
+    load_llm(llm_backend)
     load_whisper()
 
     results = []

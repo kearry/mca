@@ -12,6 +12,8 @@ export default function HomePage() {
     const [inputType, setInputType] = useState<InputType>('youtube');
     const [inputValue, setInputValue] = useState('');
     const [pdfFile, setPdfFile] = useState<File | null>(null);
+    type ModelType = 'phi' | 'gemini';
+    const [model, setModel] = useState<ModelType>('phi');
     const [isLoading, setIsLoading] = useState(false);
     const [jobId, setJobId] = useState<string | null>(null);
     const [jobResult, setJobResult] = useState<(Job & { posts: ExtendedPost[] }) | null>(null);
@@ -64,6 +66,7 @@ export default function HomePage() {
 
         const formData = new FormData();
         formData.append('inputType', inputType);
+        formData.append('llmModel', model);
 
         if (inputType === 'youtube') {
             formData.append('url', inputValue);
@@ -127,6 +130,17 @@ export default function HomePage() {
                         </div>
                     </div>
                     <div className="mb-4">{renderInput()}</div>
+                    <div className="mb-4">
+                        <label className="block mb-2 font-medium">Model</label>
+                        <select
+                            value={model}
+                            onChange={(e) => setModel(e.target.value as ModelType)}
+                            className="w-full p-2 border rounded bg-gray-50 dark:bg-gray-700 dark:border-gray-600"
+                        >
+                            <option value="phi">Phi 3.1 Mini (local)</option>
+                            <option value="gemini">Gemini 2.5 Pro Preview</option>
+                        </select>
+                    </div>
                     <button type="submit" disabled={isLoading} className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center">
                         {isLoading ? (
                             <>

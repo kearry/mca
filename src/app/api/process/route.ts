@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
         console.log('POST /api/process received');
         const { fields, files, tempDir } = await parseForm(req);
         console.log('Form fields:', fields);
-        const { inputType, text, url } = fields;
+        const { inputType, text, url, llmModel } = fields;
 
         if (!inputType) {
             return NextResponse.json({ error: 'inputType is required' }, { status: 400 });
@@ -140,16 +140,17 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Python runtime not found' }, { status: 500 });
         }
 
+        const model = llmModel || 'phi';
         let scriptArgs: string[] = [];
         if (inputType === 'youtube') {
-            scriptArgs = [inputType, url, job.id];
+            scriptArgs = [inputType, url, job.id, model];
         } else if (inputType === 'pdf') {
             if (!files.pdfFile) {
                 throw new Error("No PDF file uploaded");
             }
-            scriptArgs = [inputType, files.pdfFile.filepath, job.id];
+            scriptArgs = [inputType, files.pdfFile.filepath, job.id, model];
         } else if (inputType === 'text') {
-            scriptArgs = [inputType, text, job.id];
+            scriptArgs = [inputType, text, job.id, model];
         } else {
             throw new Error("Invalid input type");
         }
