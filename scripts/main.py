@@ -50,20 +50,31 @@ logging.basicConfig(filename=_log_path, level=logging.DEBUG,
                     format="%(asctime)s %(levelname)s %(message)s")
 
 # --- Model Initialization ---
-LLM_TEXT_GENERATOR = Llama(
-    model_path=LLM_MODEL_PATH,
-    n_gpu_layers=-1,
-    n_ctx=4096,
-    verbose=True,
-    chat_format="qwen"
-)
+LLM_TEXT_GENERATOR = None
+WHISPER_TRANSCRIBER = None
 
-def _load_whisper_model():
-    """Load the Whisper model from a local file if present or by name."""
-    model_path = WHISPER_MODEL_PATH if os.path.exists(WHISPER_MODEL_PATH) else WHISPER_MODEL_NAME
-    return whisper.load_model(model_path)
 
-WHISPER_TRANSCRIBER = _load_whisper_model()
+def load_llm():
+    """Initialize and return the global LLM text generator."""
+    global LLM_TEXT_GENERATOR
+    if LLM_TEXT_GENERATOR is None:
+        LLM_TEXT_GENERATOR = Llama(
+            model_path=LLM_MODEL_PATH,
+            n_gpu_layers=-1,
+            n_ctx=4096,
+            verbose=True,
+            chat_format="qwen",
+        )
+    return LLM_TEXT_GENERATOR
+
+
+def load_whisper():
+    """Initialize and return the global Whisper transcriber."""
+    global WHISPER_TRANSCRIBER
+    if WHISPER_TRANSCRIBER is None:
+        model_path = WHISPER_MODEL_PATH if os.path.exists(WHISPER_MODEL_PATH) else WHISPER_MODEL_NAME
+        WHISPER_TRANSCRIBER = whisper.load_model(model_path)
+    return WHISPER_TRANSCRIBER
 
 # --- Audio & Video Parsers ---
 def convert_to_wav(video_path, job_id):
@@ -86,7 +97,8 @@ def convert_to_wav(video_path, job_id):
 
 def transcribe_audio(wav_path: str) -> dict:
     """Run Whisper on the provided WAV file and return the full result dict."""
-    result = WHISPER_TRANSCRIBER.transcribe(wav_path)
+    whisper_model = load_whisper()
+    result = whisper_model.transcribe(wav_path)
     if isinstance(result, dict):
         return result
     if isinstance(result, str):
@@ -299,6 +311,7 @@ Here is an example of the required output format:
     max_context_tokens = 4096 - (len(system_prompt_template) + output_token_buffer)
     max_context_chars = max_context_tokens * chars_per_token
 
+    llm = load_llm()
     all_posts = []
     # Split context into chunks
     for i in range(0, len(context), max_context_chars):
@@ -317,7 +330,7 @@ Here is an example of the required output format:
 
         logging.debug("LLM INPUT: %s", json.dumps(messages, ensure_ascii=False))
 
-        chat_completion = LLM_TEXT_GENERATOR.create_chat_completion(
+        chat_completion = llm.create_chat_completion(
             messages=messages,
             temperature=0.2,
             max_tokens=output_token_buffer,
@@ -351,7 +364,10 @@ if __name__ == "__main__":
     if len(sys.argv) < 4:
         print(json.dumps({"status": "failed", "error": "Internal error: Incorrect script arguments."}), file=sys.stderr)
         sys.exit(1)
-        
+
+    load_llm()
+    load_whisper()
+
     input_type = sys.argv[1]
     input_data = sys.argv[2]
     job_id = sys.argv[3]

@@ -33,7 +33,7 @@ class GeneratePostsTests(unittest.TestCase):
             '[{"post_text": "first", "source_quote": "q1"}]',
             '[{"post_text": "second", "source_quote": "q2"}]',
         ])
-        main.LLM_TEXT_GENERATOR = stub
+        main.load_llm = lambda: stub
 
         func = main.generate_posts_from_text
         system_prompt = func.__code__.co_consts[1]
@@ -53,7 +53,7 @@ class GeneratePostsTests(unittest.TestCase):
         stub = StubLLM([
             "<think>\nHere is your data:\n[{\"post_text\": \"foo\", \"source_quote\": \"bar\"}]"
         ])
-        main.LLM_TEXT_GENERATOR = stub
+        main.load_llm = lambda: stub
         posts = main.generate_posts_from_text("hello", "text")
         self.assertEqual(len(posts), 1)
         self.assertEqual(posts[0]["post_text"], "foo")
@@ -62,7 +62,7 @@ class GeneratePostsTests(unittest.TestCase):
         stub = StubLLM([
             "<think>doing stuff</think>[{\"post_text\": \"tagged\", \"source_quote\": \"bar\"}]"
         ])
-        main.LLM_TEXT_GENERATOR = stub
+        main.load_llm = lambda: stub
         posts = main.generate_posts_from_text("hello", "text")
         self.assertEqual(len(posts), 1)
         self.assertEqual(posts[0]["post_text"], "tagged")
@@ -71,7 +71,7 @@ class GeneratePostsTests(unittest.TestCase):
         stub = StubLLM([
             '[{\"post_text\": \"tagless\", \"source_quote\": \"bar\"}]</think>'
         ])
-        main.LLM_TEXT_GENERATOR = stub
+        main.load_llm = lambda: stub
         posts = main.generate_posts_from_text("hello", "text")
         self.assertEqual(len(posts), 1)
         self.assertEqual(posts[0]["post_text"], "tagless")
