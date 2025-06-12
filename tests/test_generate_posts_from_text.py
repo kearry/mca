@@ -97,6 +97,13 @@ class GeneratePostsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             main.generate_posts_from_text("hello", "text")
 
+    def test_single_post_object(self):
+        stub = StubLLM(['{"post_text": "solo", "source_quote": "q"}'])
+        main.load_llm = lambda: stub
+        posts = main.generate_posts_from_text("hello", "text")
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0]["post_text"], "solo")
+
 
     def test_deduplicate_posts_by_quote(self):
         posts = [
