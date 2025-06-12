@@ -558,11 +558,54 @@ Here is an example of the required output format:
 # --- Main Execution ---
 if __name__ == "__main__":
     logging.info("script start: %s", sys.argv)
-    if len(sys.argv) < 4:
+    if len(sys.argv) < 2:
         print(json.dumps({"status": "failed", "error": "Internal error: Incorrect script arguments."}), file=sys.stderr)
         sys.exit(1)
 
     input_type = sys.argv[1]
+
+    if input_type == "clip":
+        if len(sys.argv) < 5:
+            print(json.dumps({"status": "failed", "error": "Internal error: Incorrect script arguments."}), file=sys.stderr)
+            sys.exit(1)
+        job_id = sys.argv[2]
+        post_id = sys.argv[3]
+        quote = sys.argv[4]
+
+        segments_file = PUBLIC_FOLDER / f"{job_id}_segments.json"
+        video_path = PUBLIC_FOLDER / f"{job_id}_full.mp4"
+        if not segments_file.exists() or not video_path.exists():
+            print(json.dumps({"status": "failed", "error": "Required files not found."}), file=sys.stderr)
+            sys.exit(1)
+        with open(segments_file, "r") as f:
+            segments = json.load(f)
+
+        start, end, snippet = find_quote_timestamps(segments, quote)
+        if start is None or end is None:
+            print(json.dumps({"status": "failed", "error": "Quote not found."}), file=sys.stderr)
+            sys.exit(1)
+
+        clip_path = PUBLIC_FOLDER / f"{post_id}.mp4"
+        if not extract_clip(video_path, start, end, clip_path, WATERMARK_PATH):
+            print(json.dumps({"status": "failed", "error": "Clip extraction failed."}), file=sys.stderr)
+            sys.exit(1)
+
+        result = {
+            "status": "complete",
+            "media_path": f"/generated/{post_id}.mp4",
+            "start_time": start,
+            "end_time": end,
+        }
+        if snippet:
+            result["quote_snippet"] = snippet
+
+        print(json.dumps(result))
+        sys.exit(0)
+
+    if len(sys.argv) < 4:
+        print(json.dumps({"status": "failed", "error": "Internal error: Incorrect script arguments."}), file=sys.stderr)
+        sys.exit(1)
+
     input_data = sys.argv[2]
     job_id = sys.argv[3]
     llm_backend = sys.argv[4] if len(sys.argv) >= 5 else "phi"
@@ -586,26 +629,11 @@ if __name__ == "__main__":
                 raise ValueError("Transcription failed or video contains no speech.")
             posts_data = generate_posts_from_text(transcript_text, "YouTube video")
             posts_data = deduplicate_posts(posts_data)
-            for idx, post in enumerate(posts_data):
-                quote = post.get("source_quote")
-                start, end, snippet = find_quote_timestamps(segments, quote)
-                if start is not None and end is not None:
-                    post["start_time"] = start
-                    post["end_time"] = end
-                    if snippet:
-                        post["quote_snippet"] = snippet
-                    clip_filename = f"{job_id}_clip{idx + 1}.mp4"
-                    clip_path = PUBLIC_FOLDER / clip_filename
-                    if extract_clip(
-                        full_video_path,
-                        start,
-                        end,
-                        clip_path,
-                        WATERMARK_PATH,
-                    ):
-                        post["media_path"] = f"/generated/{clip_filename}"
-                if "media_path" not in post:
-                    post["media_path"] = f"/generated/{Path(full_video_path).name}"
+
+            segments_file = PUBLIC_FOLDER / f"{job_id}_segments.json"
+            with open(segments_file, "w") as f:
+                json.dump(segments, f)
+
             results = posts_data
 
         elif input_type == "pdf":
