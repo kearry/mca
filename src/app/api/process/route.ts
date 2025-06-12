@@ -194,10 +194,7 @@ export async function POST(req: NextRequest) {
                             data: result.posts.map((post: any) => ({
                                 jobId: job.id,
                                 content: post.post_text,
-                                mediaPath: post.media_path,
-                                quoteSnippet: post.quote_snippet,
-                                startTime: post.start_time,
-                                endTime: post.end_time,
+                                quoteSnippet: post.source_quote,
                                 pageNumber: post.page_number,
                             })),
                         });
