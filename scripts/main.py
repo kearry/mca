@@ -28,7 +28,11 @@ import whisper
 MODEL_DIRECTORY = os.path.expanduser("~/.cache/lm-studio/models")
 
 # LLaMA-style text generator model
-LLM_MODEL_PATH = os.path.join(MODEL_DIRECTORY, "lmstudio-community/Qwen3-1.7B-GGUF/Qwen3-1.7B-Q8_0.gguf")
+# Default to the DeepSeek-R1 1.5B model downloaded by LM Studio.
+LLM_MODEL_PATH = os.path.join(
+    MODEL_DIRECTORY,
+    "lmstudio-community/deepseek-r1-1.5b-GGUF/deepseek-r1-1.5b-Q8_0.gguf",
+)
 
 # Whisper model identifier or path accepted by the openai-whisper library. We
 # default to the "base.en" model name but also allow specifying a path to a
@@ -109,7 +113,7 @@ def load_llm():
             n_gpu_layers=-1,
             n_ctx=4096,
             verbose=True,
-            chat_format="qwen",
+            chat_format="deepseek",
         )
     return LLM_TEXT_GENERATOR
 
