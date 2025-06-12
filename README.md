@@ -36,4 +36,9 @@ browser-exported cookies file. The helper script automatically loads this file
 when present. See the [yt-dlp cookies guide](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp)
 for instructions on exporting cookies.
 
+If you want to brand generated clips with a watermark image, place
+`aiprepperWM.png` in the `public` folder or set the `WATERMARK_PATH`
+environment variable to point to your own watermark file. The helper script will
+overlay this image on the bottom right of each extracted clip.
+
 For details on how the modules work, test commands and production deployment see the [Developer Guide](./DEVELOPER_GUIDE.md).

@@ -49,6 +49,14 @@ WHISPER_MODEL_PATH = os.path.expanduser("~/whisper_models/base.en.pt")
 PUBLIC_FOLDER = Path(__file__).resolve().parents[1] / "public" / "generated"
 PUBLIC_FOLDER.mkdir(exist_ok=True, parents=True)
 
+# Default watermark image placed under the project's public directory. Users can
+# override this path by setting the WATERMARK_PATH environment variable. If the
+# file doesn't exist the overlay step is skipped.
+WATERMARK_PATH = os.getenv(
+    "WATERMARK_PATH",
+    str(Path(__file__).resolve().parents[1] / "public" / "aiprepperWM.png"),
+)
+
 # --- Helpers to reuse existing output ---
 def _get_db_path() -> str | None:
     """Return the absolute path of the SQLite database if available."""
@@ -284,24 +292,41 @@ def find_quote_timestamps(segments, quote, *, window: int = 20, threshold: float
     logging.debug("find_quote_timestamps: no match")
     return None, None, None
 
-def extract_clip(video_path, start, end, output_path):
+def extract_clip(video_path, start, end, output_path, watermark_path=None):
     """Extract a clip from ``video_path`` between ``start`` and ``end``.
 
     ``ffmpeg`` is invoked with output seeking so the clip begins at the exact
-    timestamp.  Streams are re-encoded to keep audio and video perfectly in sync
-    even when ``start`` does not land on a keyframe.
+    timestamp. Streams are re-encoded to keep audio and video perfectly in sync
+    even when ``start`` does not land on a keyframe. If ``watermark_path``
+    points to an existing image it is overlaid in the bottom right corner of the
+    clip.
     """
 
-    command = [
-        "ffmpeg",
-        "-i", str(video_path),  # Input file
-        "-ss", str(start),      # Output seek start time for frame-accurate cut
-        "-to", str(end),        # Output seek end time
-        "-c:v", "libx264",      # Re-encode video to ensure sync
-        "-c:a", "aac",          # Re-encode audio
-        "-movflags", "+faststart",  # Allow fast playback start
-        "-y",                   # Overwrite output file if it exists
-        str(output_path),       # Output file
+    command = ["ffmpeg", "-i", str(video_path)]
+
+    if watermark_path and os.path.exists(watermark_path):
+        command += [
+            "-i",
+            str(watermark_path),
+            "-filter_complex",
+            "[0:v][1:v] overlay=main_w-overlay_w-10:10",
+            "-map",
+            "0:a?",
+        ]
+
+    command += [
+        "-ss",
+        str(start),  # Output seek start time for frame-accurate cut
+        "-to",
+        str(end),  # Output seek end time
+        "-c:v",
+        "libx264",  # Re-encode video to ensure sync
+        "-c:a",
+        "aac",  # Re-encode audio
+        "-movflags",
+        "+faststart",  # Allow fast playback start
+        "-y",  # Overwrite output file if it exists
+        str(output_path),  # Output file
     ]
     try:
         # The logging call was correct, joining the command for display.
@@ -542,7 +567,13 @@ if __name__ == "__main__":
                         post["quote_snippet"] = snippet
                     clip_filename = f"{job_id}_clip{idx + 1}.mp4"
                     clip_path = PUBLIC_FOLDER / clip_filename
-                    if extract_clip(full_video_path, start, end, clip_path):
+                    if extract_clip(
+                        full_video_path,
+                        start,
+                        end,
+                        clip_path,
+                        WATERMARK_PATH,
+                    ):
                         post["media_path"] = f"/generated/{clip_filename}"
                 if "media_path" not in post:
                     post["media_path"] = f"/generated/{Path(full_video_path).name}"
