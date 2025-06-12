@@ -5,6 +5,8 @@ import path from 'path';
 import { isPdfFile } from '@/lib/isPdfFile';
 import os from 'os';
 import fs from 'fs/promises';
+import fsSync from 'fs';
+import crypto from 'crypto';
 
 // Helper to parse multipart form data
 const parseForm = async (
@@ -85,14 +87,24 @@ export async function POST(req: NextRequest) {
             }
         }
 
-       // 1. Determine input identifier and check for existing completed job
+       // 1. Determine input identifier and checksum then check for existing completed job
         let inputDataValue = '';
         if (inputType === 'youtube') inputDataValue = url;
         if (inputType === 'text') inputDataValue = text.substring(0, 200);
         if (inputType === 'pdf') inputDataValue = files.pdfFile?.originalFilename || 'uploaded.pdf';
 
+        let inputChecksum = '';
+        if (inputType === 'youtube') {
+            inputChecksum = crypto.createHash('sha256').update(url).digest('hex');
+        } else if (inputType === 'text') {
+            inputChecksum = crypto.createHash('sha256').update(text).digest('hex');
+        } else if (inputType === 'pdf') {
+            const buffer = fsSync.readFileSync(files.pdfFile.filepath);
+            inputChecksum = crypto.createHash('sha256').update(buffer).digest('hex');
+        }
+
         const existing = await prisma.job.findFirst({
-            where: { inputType, inputData: inputDataValue, status: 'complete' },
+            where: { inputType, inputChecksum, status: 'complete' },
             select: { id: true },
         });
 
@@ -106,6 +118,7 @@ export async function POST(req: NextRequest) {
             data: {
                 inputType,
                 inputData: inputDataValue,
+                inputChecksum,
                 status: 'processing',
             },
         });

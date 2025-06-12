@@ -26,6 +26,10 @@ Below is a quick start summary.
 
 Open [http://localhost:3000](http://localhost:3000) to access the web interface. Upload a PDF, paste text or provide a YouTube URL and the backend will generate sample posts in `public/generated/`.
 
+The server automatically detects duplicate submissions. When the same URL is
+submitted again or an uploaded file matches a previously processed SHA256
+checksum the existing posts are returned instead of reprocessing the content.
+
 If downloading a YouTube video fails because authentication is required, create
 a `.env` file in the project root and set `YTDLP_COOKIE_FILE` to the path of a
 browser-exported cookies file. The helper script automatically loads this file

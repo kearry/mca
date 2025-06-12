@@ -14,6 +14,7 @@ model Job {
   id          String   @id @default(cuid())
   inputType   String // "youtube", "pdf", "text"
   inputData   String // URL, file path, or first 200 chars of text
+  inputChecksum String? // SHA256 of URL, text or file contents
   status      String   @default("pending") // pending, processing, complete, failed
   error       String?
   createdAt   DateTime @default(now())
