@@ -13,6 +13,7 @@ This document summarizes the primary functional capabilities provided by the app
 - Each submission creates a `Job` entry in the SQLite database with the input type, a summary of the input data and a processing status.
 - `GET /api/process?jobId=<id>` allows the client to poll the status (`pending`, `processing`, `complete`, or `failed`).
 - When the Python script finishes, the job status is updated and any generated posts are stored in related `Post` records.
+- the Python script allows intelligent handling of re-submitted jobs
 
 ## 3. Content Processing Pipeline
 - The backend spawns `scripts/main.py` with arguments specifying the input type, input data and job ID.
@@ -40,6 +41,7 @@ This document summarizes the primary functional capabilities provided by the app
 ## 5. Error Handling
 - If the Python runtime is missing or the script fails, the job status is marked as `failed` and the error message is stored.
 - The frontend presents any error messages returned by the API to the user.
+- The frontend has a page that displays old jobs and their status, jobs may be submitted here
 
 ## 6. Testing
 - Python unit tests under `tests/` verify helper functions such as `find_quote_timestamps` and `generate_posts_from_text`.
