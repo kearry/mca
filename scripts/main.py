@@ -463,10 +463,21 @@ Here is an example of the required output format:
 
         try:
             data = _extract_json(response_content)
-            if isinstance(data, dict) and len(data) == 1 and isinstance(list(data.values())[0], list):
-                posts = list(data.values())[0]
-            else:
+            if isinstance(data, dict):
+                if len(data) == 1 and isinstance(list(data.values())[0], list):
+                    posts = list(data.values())[0]
+                else:
+                    raise ValueError(
+                        "JSON object does not contain a single list value"
+                    )
+            elif isinstance(data, list):
                 posts = data
+            else:
+                raise ValueError("JSON output must be a list of objects")
+
+            if any(not isinstance(p, dict) for p in posts):
+                raise ValueError("JSON array must contain objects")
+
             all_posts.extend(posts)
         except Exception as e:
             # Propagate a clear error so the caller can fail the job instead of

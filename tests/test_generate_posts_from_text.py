@@ -85,6 +85,18 @@ class GeneratePostsTests(unittest.TestCase):
         self.assertEqual(len(posts), 1)
         self.assertEqual(posts[0]["post_text"], "ok")
 
+    def test_invalid_json_shape_dict(self):
+        stub = StubLLM(['{"foo": "bar"}'])
+        main.load_llm = lambda: stub
+        with self.assertRaises(ValueError):
+            main.generate_posts_from_text("hello", "text")
+
+    def test_invalid_json_shape_array_elements(self):
+        stub = StubLLM(['["a", "b"]'])
+        main.load_llm = lambda: stub
+        with self.assertRaises(ValueError):
+            main.generate_posts_from_text("hello", "text")
+
 
     def test_deduplicate_posts_by_quote(self):
         posts = [
