@@ -206,8 +206,11 @@ class YouTubeProcessor:
             logging.error("extract_clip failed: %s", e.stderr)
             return False
 
-    def find_quote_timestamps(self, segments, quote, window=20, threshold=0.55, context_padding=2.0):
-        """Return start/end times and the snippet most similar to the quote with better context."""
+    def find_quote_timestamps(self, segments, quote, window=20, threshold=0.65, context_padding=2.0):
+        """Return start/end times and the snippet most similar to the quote with better context.
+        
+        Improved version that prioritizes longer, more meaningful matches.
+        """
         logging.debug("find_quote_timestamps: searching for '%s'", quote)
         if not quote:
             return None, None, None
@@ -216,12 +219,15 @@ class YouTubeProcessor:
             return re.sub(r"[^a-z0-9\s]", "", text.lower())
 
         target = normalize(quote)
+        target_words = target.split()
+        min_words = max(3, len(target_words) // 2)  # Require at least half the words or 3 words minimum
+        
         best_ratio = 0.0
         best_result = (None, None, None)
         n = len(segments)
 
-        # Try different window sizes for better matching
-        for window_size in [window, window + 5, window - 5]:
+        # Try progressively smaller windows, but prioritize longer matches
+        for window_size in [window + 10, window + 5, window, max(5, window - 5)]:
             if window_size <= 0:
                 continue
                 
@@ -230,9 +236,8 @@ class YouTubeProcessor:
                 start = None
                 end = None
                 
-                for j in range(window_size):
-                    if i + j >= n:
-                        break
+                # Build up combined text and check for matches at meaningful intervals
+                for j in range(min(window_size, n - i)):
                     seg = segments[i + j]
                     if start is None:
                         start = seg.get("start")
@@ -240,22 +245,40 @@ class YouTubeProcessor:
                     if combined:
                         combined += " "
                     combined += seg.get("text", "")
-
-                    # Check match at each step for partial matches
+                    
+                    # Only check for matches after we have enough words
+                    combined_words = normalize(combined).split()
+                    if len(combined_words) < min_words:
+                        continue
+                    
+                    # Calculate similarity
                     ratio = SequenceMatcher(None, normalize(combined), target).ratio()
-                    if ratio > best_ratio:
-                        best_ratio = ratio
+                    
+                    # Bonus for longer matches that contain more of the target words
+                    word_coverage = len(set(target_words) & set(combined_words)) / len(target_words)
+                    length_bonus = min(len(combined_words) / len(target_words), 2.0)  # Cap at 2x bonus
+                    
+                    # Adjusted score favoring longer, more complete matches
+                    adjusted_ratio = ratio * (0.6 + 0.2 * word_coverage + 0.2 * length_bonus)
+                    
+                    if adjusted_ratio > best_ratio:
+                        best_ratio = adjusted_ratio
                         # Add context padding to the timestamps
                         padded_start = max(0, start - context_padding) if start else None
                         padded_end = (end + context_padding) if end else None
                         best_result = (padded_start, padded_end, combined.strip())
+                        
+                        logging.debug("New best match: ratio=%.3f, adjusted=%.3f, words=%d, coverage=%.2f", 
+                                    ratio, adjusted_ratio, len(combined_words), word_coverage)
 
+        # Use a higher threshold to ensure quality matches
         if best_ratio >= threshold:
-            logging.debug("find_quote_timestamps: found %s-%s (score %.2f)", 
-                         best_result[0], best_result[1], best_ratio)
-            print(f"Found quote match: {best_ratio:.2f} confidence", file=sys.stderr)
+            duration = (best_result[1] or 0) - (best_result[0] or 0)
+            logging.debug("find_quote_timestamps: found %s-%s (score %.2f, duration %.1fs)", 
+                         best_result[0], best_result[1], best_ratio, duration)
+            print(f"Found meaningful quote match: {best_ratio:.2f} confidence, {duration:.1f}s duration", file=sys.stderr)
             return best_result
         
-        logging.debug("find_quote_timestamps: no match (best score: %.2f)", best_ratio)
-        print(f"Quote not found (best match: {best_ratio:.2f})", file=sys.stderr)
+        logging.debug("find_quote_timestamps: no meaningful match (best score: %.2f)", best_ratio)
+        print(f"No meaningful quote match found (best: {best_ratio:.2f}, threshold: {threshold})", file=sys.stderr)
         return None, None, None

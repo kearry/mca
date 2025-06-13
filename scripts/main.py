@@ -29,19 +29,16 @@ PUBLIC_FOLDER = Path(__file__).resolve().parents[1] / "public" / "generated"
 PUBLIC_FOLDER.mkdir(exist_ok=True, parents=True)
 
 
-def find_quote_timestamps(segments, quote, window=20, threshold=0.55, context_padding=0.0):
+def find_quote_timestamps(segments, quote, window=20, threshold=0.65, context_padding=2.0):
     """Convenience wrapper for YouTubeProcessor.find_quote_timestamps."""
     yt = YouTubeProcessor(PUBLIC_FOLDER, WATERMARK_PATH)
-    start, end, snippet = yt.find_quote_timestamps(
+    return yt.find_quote_timestamps(
         segments,
         quote,
         window=window,
         threshold=threshold,
         context_padding=context_padding,
     )
-    if start is None and snippet:
-        start = 0.0
-    return start, end, snippet
 
 
 def load_llm(backend: str | None = None):
@@ -312,7 +309,7 @@ def cleanup_old_files(days=30):
         print(f"Cleaned up {cleaned} old files", file=sys.stderr)
 
 def process_clip_request(job_id, post_id, quote):
-    """Handle clip extraction request."""
+    """Handle clip extraction request with proper quote matching."""
     youtube_processor = YouTubeProcessor(PUBLIC_FOLDER, WATERMARK_PATH)
     
     segments_file = PUBLIC_FOLDER / f"{job_id}_segments.json"
@@ -324,9 +321,11 @@ def process_clip_request(job_id, post_id, quote):
     with open(segments_file, "r") as f:
         segments = json.load(f)
 
+    # Use the improved quote matching directly
     start, end, snippet = youtube_processor.find_quote_timestamps(segments, quote)
+    
     if start is None or end is None:
-        raise RuntimeError("Quote not found.")
+        raise RuntimeError("Quote not found in transcript.")
 
     clip_path = PUBLIC_FOLDER / f"{post_id}.mp4"
     if not youtube_processor.extract_clip(video_path, start, end, clip_path):

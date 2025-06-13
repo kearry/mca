@@ -13,7 +13,7 @@ LLM_MODEL_PATH = os.path.join(
 )
 
 class GeminiLLM:
-    def __init__(self, model_name: str = "gemini-2.5-pro-preview"):
+    def __init__(self, model_name: str = "gemini-2.0-flash"):  # Changed to valid model name
         import google.generativeai as genai
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
