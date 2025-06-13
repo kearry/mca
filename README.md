@@ -20,7 +20,7 @@ Below is a quick start summary.
    cp .env.example .env
    ```
    The example lists variables such as `DATABASE_URL`, `YTDLP_COOKIE_FILE`,
-   `YTDLP_VIDEO_FORMAT` and `GOOGLE_API_KEY` used by the application.
+   `YTDLP_VIDEO_FORMAT`, `GOOGLE_API_KEY` and `WHISPER_MODEL_PATH` used by the application.
 3. Initialize the SQLite database with Prisma:
    ```bash
    npx prisma db push
@@ -50,6 +50,8 @@ defaults to that 720p-limited string when unset.
 
 To use the Gemini 2.5 Pro Preview model set `GOOGLE_API_KEY` in your `.env`.
 The home page lets you pick either the local Phi model or Gemini from a drop‑down.
+
+To use a custom Whisper transcription model specify `WHISPER_MODEL_PATH` in `.env`.
 
 If you want to brand generated clips with a watermark image, place
 `aiprepperWM.png` in the `public` folder or set the `WATERMARK_PATH`
