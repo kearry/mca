@@ -77,7 +77,7 @@ class YouTubeProcessor:
             logging.error("convert_to_wav failed: %s", e.stderr)
             raise RuntimeError(f"FFmpeg failed: {e.stderr}")
 
-    def process(self, url, job_id, whisper_model):
+    def process(self, url, job_id, whisper_manager):
         """Process a YouTube URL and return transcript text, video path, and segments."""
         import yt_dlp
         from yt_dlp.utils import DownloadError
@@ -133,7 +133,7 @@ class YouTubeProcessor:
 
             logging.info("YouTubeProcessor: transcribing")
             print("Transcribing audio...", file=sys.stderr)
-            transcript_result = self.transcribe_audio(wav_path, whisper_model)
+            transcript_result = whisper_manager.transcribe_audio(wav_path)
             transcript_text = transcript_result.get("text", "")
             segments = transcript_result.get("segments", [])
             logging.info(
@@ -155,28 +155,6 @@ class YouTubeProcessor:
             json.dump(segments, f)
 
         return transcript_text, str(video_path), segments
-
-    def transcribe_audio(self, wav_path, whisper_model):
-        """Run Whisper on the provided WAV file and return the full result dict."""
-        logging.info("transcribe_audio: starting on %s", wav_path)
-        result = whisper_model.transcribe(wav_path)
-        logging.info("transcribe_audio: finished")
-        if isinstance(result, dict):
-            return result
-        if isinstance(result, str):
-            return {"text": result, "segments": []}
-        # Fallback if a sequence of segments is returned
-        return {
-            "text": " ".join(getattr(seg, "text", str(seg)) for seg in result),
-            "segments": [
-                {
-                    "start": getattr(seg, "start", None),
-                    "end": getattr(seg, "end", None),
-                    "text": getattr(seg, "text", str(seg)),
-                }
-                for seg in result
-            ],
-        }
 
     def extract_clip(self, video_path, start, end, output_path, padding=1.0):
         """Extract a clip from video_path between start and end times with padding."""

@@ -45,12 +45,12 @@ class LLMManager:
             self.backend = backend
             if backend == "gemini":
                 logging.info("Loading Gemini model")
-                print("Loading Gemini model...", file=sys.stderr)
+                print("🤖 Loading Gemini model...", file=sys.stderr)
                 self.llm = GeminiLLM()
             else:
                 from llama_cpp import Llama
                 logging.info("Loading LLaMA model from %s", LLM_MODEL_PATH)
-                print("Loading local Phi model...", file=sys.stderr)
+                print("🤖 Loading local Phi model...", file=sys.stderr)
                 self.llm = Llama(
                     model_path=LLM_MODEL_PATH,
                     n_gpu_layers=-1,
@@ -59,7 +59,7 @@ class LLMManager:
                     chat_format="chatml",
                 )
             logging.info("LLM model loaded: %s", backend)
-            print("Model loaded successfully", file=sys.stderr)
+            print("✅ Model loaded successfully", file=sys.stderr)
         
         return self.llm
 
@@ -115,7 +115,7 @@ class LLMManager:
         logging.info("deduplicate_posts: returning %d posts", len(unique))
         return unique
 
-    def generate_posts_from_text(self, context, source_type):
+    def generate_posts_from_text(self, context, source_type, llm_backend=None):
         """Generate high-quality social media posts with enhanced prompting."""
         
         # Enhanced system prompt that's much more specific about what makes content viral
@@ -164,13 +164,15 @@ Examples of good variety:
         # Estimate tokens and chunk if needed
         chars_per_token = 4
         output_token_buffer = 1024
-        max_context_tokens = 8192 - (len(system_prompt) + output_token_buffer)
+        max_context_tokens = 8192 - (
+            len(system_prompt) + output_token_buffer
+        )
         max_context_chars = max_context_tokens * chars_per_token
 
-        logging.info("generate_posts_from_text: %d chars from %s", len(context), source_type)
-        print("Generating viral social media posts...", file=sys.stderr)
+        logging.info("generate_posts_from_text: %d chars from %s using %s", len(context), source_type, llm_backend or "default")
+        print(f"🤖 Generating viral social media posts using {llm_backend or 'default'} model...", file=sys.stderr)
         
-        llm = self.load_llm()
+        llm = self.load_llm(llm_backend)  # Pass the backend parameter
         all_posts = []
         
         # Process content in chunks
@@ -237,6 +239,6 @@ Examples of good variety:
 
         final_posts = self.deduplicate_posts(all_posts)
         logging.info("generate_posts_from_text: produced %d final posts", len(final_posts))
-        print(f"Generated {len(final_posts)} viral posts", file=sys.stderr)
+        print(f"✅ Generated {len(final_posts)} viral posts using {llm_backend or 'default'} model", file=sys.stderr)
         
         return final_posts

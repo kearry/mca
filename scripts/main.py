@@ -49,7 +49,7 @@ def load_llm(backend: str | None = None):
     return llm_manager.load_llm(backend)
 
 
-def generate_posts_from_text(context: str, source_type: str):
+def generate_posts_from_text(context: str, source_type: str, llm_backend: str = None):
     """Generate high-quality social media posts with enhanced prompting."""
     system_prompt = """You are creating authentic, engaging social media posts from source material.
 
@@ -98,10 +98,10 @@ Examples of good variety:
     max_context_tokens = base_context_tokens - (len(system_prompt) + output_token_buffer)
     max_context_chars = max_context_tokens * chars_per_token
 
-    logging.info("generate_posts_from_text: %d chars from %s", len(context), source_type)
-    print("Generating viral social media posts...", file=sys.stderr)
+    logging.info("generate_posts_from_text: %d chars from %s using %s", len(context), source_type, llm_backend or "default")
+    print(f"🤖 Generating viral social media posts using {llm_backend or 'default'} model...", file=sys.stderr)
 
-    llm = load_llm()
+    llm = load_llm(llm_backend)  # Pass the backend parameter
     all_posts = []
 
     for i in range(0, len(context), max_context_chars):
@@ -360,7 +360,7 @@ def process_content(input_type, input_data, job_id, llm_backend):
 
     # Load models
     llm_manager.load_llm(llm_backend)
-    whisper_model = whisper_manager.load_whisper()
+    whisper_manager.load_whisper()
 
     # Initialize processors
     youtube_processor = YouTubeProcessor(PUBLIC_FOLDER, WATERMARK_PATH)
@@ -375,13 +375,13 @@ def process_content(input_type, input_data, job_id, llm_backend):
     if input_type == "youtube":
         print("📺 Processing YouTube video...", file=sys.stderr)
         transcript_text, full_video_path, segments = youtube_processor.process(
-            input_data, job_id, whisper_model
+            input_data, job_id, whisper_manager
         )
         if not transcript_text.strip():
             raise ValueError("Transcription failed or video contains no speech.")
         
         print(f"📝 GOT TRANSCRIPT: {len(transcript_text)} characters", file=sys.stderr)
-        posts_data = llm_manager.generate_posts_from_text(transcript_text, "YouTube video")
+        posts_data = llm_manager.generate_posts_from_text(transcript_text, "YouTube video", llm_backend)
         results = posts_data
 
     elif input_type == "pdf":
@@ -389,7 +389,7 @@ def process_content(input_type, input_data, job_id, llm_backend):
         transcript_text, image_paths = pdf_processor.process(input_data, job_id)
         
         print(f"📝 GOT PDF TEXT: {len(transcript_text)} characters", file=sys.stderr)
-        posts_data = llm_manager.generate_posts_from_text(transcript_text, "PDF document")
+        posts_data = llm_manager.generate_posts_from_text(transcript_text, "PDF document", llm_backend)
         
         # Associate images with posts based on page numbers
         for post in posts_data:
@@ -405,7 +405,7 @@ def process_content(input_type, input_data, job_id, llm_backend):
         transcript_text = text_processor.process(input_data, job_id)
         
         print(f"📝 GOT TEXT: {len(transcript_text)} characters", file=sys.stderr)
-        results = llm_manager.generate_posts_from_text(transcript_text, "text document")
+        results = llm_manager.generate_posts_from_text(transcript_text, "text document", llm_backend)
 
     # SAVE TRANSCRIPT - This is the key part!
     if transcript_text and transcript_text.strip():
