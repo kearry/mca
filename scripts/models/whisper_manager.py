@@ -4,8 +4,9 @@ import logging
 import whisper
 
 # Whisper configuration
-WHISPER_MODEL_NAME = "base.en"
-WHISPER_MODEL_PATH = os.path.expanduser("~/whisper_models/base.en.pt")
+WHISPER_MODEL_NAME = os.getenv("WHISPER_MODEL_NAME", "base.en")
+_default_path = os.path.expanduser("~/whisper_models/base.en.pt")
+WHISPER_MODEL_PATH = os.path.expanduser(os.getenv("WHISPER_MODEL_PATH", _default_path))
 
 class WhisperManager:
     def __init__(self):

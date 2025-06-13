@@ -9,7 +9,8 @@ The instructions below walk through setting up the environment, understanding th
 - **Node.js** (18 or newer) and `npm`
 - **Python** (3.10+ recommended)
 - `ffmpeg` for video processing
-- Optionally, models for LLaMA and Whisper placed in `~/.cache/lm-studio/models` and `~/whisper_models`
+- Optionally, models for LLaMA and Whisper placed in `~/.cache/lm-studio/models` and `~/whisper_models`.
+  Set `WHISPER_MODEL_PATH` in `.env` if your Whisper weights live elsewhere.
 
 ## Installing dependencies
 

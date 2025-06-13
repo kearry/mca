@@ -5,6 +5,11 @@ import logging
 import sqlite3
 from pathlib import Path
 
+# Ensure local modules are importable when loaded as a library
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
 # Load environment variables from an optional .env file
 try:
     from dotenv import load_dotenv
@@ -22,6 +27,152 @@ from models.whisper_manager import WhisperManager
 # Configuration
 PUBLIC_FOLDER = Path(__file__).resolve().parents[1] / "public" / "generated"
 PUBLIC_FOLDER.mkdir(exist_ok=True, parents=True)
+
+
+def find_quote_timestamps(segments, quote, window=20, threshold=0.55, context_padding=0.0):
+    """Convenience wrapper for YouTubeProcessor.find_quote_timestamps."""
+    yt = YouTubeProcessor(PUBLIC_FOLDER, WATERMARK_PATH)
+    start, end, snippet = yt.find_quote_timestamps(
+        segments,
+        quote,
+        window=window,
+        threshold=threshold,
+        context_padding=context_padding,
+    )
+    if start is None and snippet:
+        start = 0.0
+    return start, end, snippet
+
+
+def load_llm(backend: str | None = None):
+    """Thin wrapper around LLMManager.load_llm so tests can stub it."""
+    return llm_manager.load_llm(backend)
+
+
+def generate_posts_from_text(context: str, source_type: str):
+    """Generate high-quality social media posts with enhanced prompting."""
+    system_prompt = """You are creating authentic, engaging social media posts from source material.
+
+Your posts should:
+- Sound natural and conversational (avoid "mind-blowing" or "game-changing" clichés)
+- Vary in style - some can be questions, observations, quick tips, or thought starters
+- Stay under 280 characters total
+- Use minimal emojis (0-2 max, only when they add value)
+- Feel like something a real person would share, not marketing copy
+
+Extract meaningful insights and present them in diverse ways:
+- "Ever notice how..."
+- "Quick thought on..."
+- "This changed my perspective:"
+- "Worth remembering:"
+- Or just state the insight directly
+
+You MUST provide your output as a valid JSON array of objects with ONLY the JSON text.
+Each object must have:
+- "post_text": The complete social media post (under 280 chars)
+- "source_quote": The exact phrase from source that inspired this post
+- Each source_quote must be unique
+
+For PDFs with page markers, also include:
+- "page_number": The page number as an integer
+
+Examples of good variety:
+[
+  {
+    "post_text": "The most successful people aren't just working harder - they're working smarter. Focus on leverage, not just effort. #productivity",
+    "source_quote": "The key to success is not just hard work, but smart work"
+  },
+  {
+    "post_text": "Quick reminder: your attention is your most valuable resource. Where you focus determines your reality. #mindfulness #focus",
+    "source_quote": "What you pay attention to becomes your experience"
+  },
+  {
+    "post_text": "Ever wonder why some habits stick and others don't? It's about environment design, not willpower. #habits",
+    "source_quote": "Environment is the invisible hand that shapes human behavior"
+  }
+]"""
+
+    chars_per_token = 4
+    output_token_buffer = 1024
+    base_context_tokens = 8192
+    max_context_tokens = base_context_tokens - (len(system_prompt) + output_token_buffer)
+    max_context_chars = max_context_tokens * chars_per_token
+
+    logging.info("generate_posts_from_text: %d chars from %s", len(context), source_type)
+    print("Generating viral social media posts...", file=sys.stderr)
+
+    llm = load_llm()
+    all_posts = []
+
+    for i in range(0, len(context), max_context_chars):
+        chunk = context[i:i + max_context_chars]
+        logging.debug("generate_posts_from_text: processing chunk %d-%d", i, i + len(chunk))
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": f"Extract the most VIRAL quotes from this {source_type}. Focus on controversial, surprising, or valuable insights that people will want to share:\n\n{chunk}"
+            }
+        ]
+
+        logging.debug("LLM INPUT: %s", json.dumps(messages, ensure_ascii=False))
+
+        chat_completion = llm.create_chat_completion(
+            messages=messages,
+            temperature=0.4,
+            max_tokens=output_token_buffer,
+        )
+
+        response_content = chat_completion['choices'][0]['message']['content']
+        logging.debug("LLM OUTPUT: %s", response_content)
+        print("--- RAW LLM OUTPUT ---", file=sys.stderr)
+        print(response_content, file=sys.stderr)
+        print("--- END RAW LLM OUTPUT ---", file=sys.stderr)
+
+        try:
+            data = llm_manager.extract_json(response_content)
+            if isinstance(data, dict):
+                if len(data) == 1 and isinstance(list(data.values())[0], list):
+                    posts = list(data.values())[0]
+                elif "post_text" in data and "source_quote" in data:
+                    posts = [data]
+                else:
+                    raise ValueError("JSON object does not contain expected structure")
+            elif isinstance(data, list):
+                posts = data
+            else:
+                raise ValueError("JSON output must be a list of objects")
+
+            if any(not isinstance(p, dict) for p in posts):
+                raise ValueError("JSON array must contain objects")
+
+            valid_posts = []
+            for post in posts:
+                if isinstance(post, dict) and "post_text" in post and "source_quote" in post:
+                    valid_posts.append(post)
+                else:
+                    logging.warning("Skipping invalid post: %s", post)
+
+            all_posts.extend(valid_posts)
+            print(f"Extracted {len(valid_posts)} posts from chunk", file=sys.stderr)
+
+        except Exception as e:
+            error_msg = f"Failed to parse LLM output: {e}. Raw output: {response_content}"
+            print(f"Error parsing JSON output: {e}", file=sys.stderr)
+            logging.warning("Chunk processing failed: %s", error_msg)
+            raise ValueError(error_msg)
+
+    final_posts = deduplicate_posts(all_posts)
+    logging.info("generate_posts_from_text: produced %d final posts", len(final_posts))
+    print(f"Generated {len(final_posts)} viral posts", file=sys.stderr)
+
+    return final_posts
+
+
+def deduplicate_posts(posts: list[dict]) -> list[dict]:
+    """Expose LLMManager.deduplicate_posts for tests."""
+    return llm_manager.deduplicate_posts(posts)
 
 WATERMARK_PATH = os.getenv(
     "WATERMARK_PATH",
