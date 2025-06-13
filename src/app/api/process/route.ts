@@ -150,7 +150,9 @@ export async function POST(req: NextRequest) {
             }
             scriptArgs = [inputType, files.pdfFile.filepath, job.id, model];
         } else if (inputType === 'text') {
-            scriptArgs = [inputType, text, job.id, model];
+            const textPath = path.join(tempDir, 'input.txt');
+            await fs.writeFile(textPath, text);
+            scriptArgs = [inputType, textPath, job.id, model];
         } else {
             throw new Error("Invalid input type");
         }
