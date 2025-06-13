@@ -3,7 +3,6 @@ import json
 import os
 import subprocess
 from pathlib import Path
-from urllib.parse import urlparse
 import wave  # For checking audio properties
 from difflib import SequenceMatcher
 import logging
