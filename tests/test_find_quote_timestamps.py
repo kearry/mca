@@ -27,7 +27,7 @@ class FindQuoteTimestampTests(unittest.TestCase):
             {"start": 2.0, "end": 3.0, "text": "and runs away"},
         ]
         quote = "quick brown fox jumps over the lazy dog"
-        start, end, snippet = find_quote_timestamps(segments, quote)
+        start, end, snippet = find_quote_timestamps(segments, quote, context_padding=0.0)
         self.assertEqual(start, 0.0)
         self.assertEqual(end, 2.0)
         self.assertIn("quick brown fox jumps over the lazy dog", snippet.lower())
@@ -38,7 +38,7 @@ class FindQuoteTimestampTests(unittest.TestCase):
             {"start": 1.0, "end": 2.0, "text": "to learn from data and make predictions"},
         ]
         quote = "machine learning lets computers learn from data to make predictions"
-        start, end, snippet = find_quote_timestamps(segments, quote)
+        start, end, snippet = find_quote_timestamps(segments, quote, context_padding=0.0)
         self.assertEqual(start, 0.0)
         self.assertEqual(end, 2.0)
         self.assertIsNotNone(snippet)
