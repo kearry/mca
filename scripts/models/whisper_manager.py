@@ -18,7 +18,27 @@ class WhisperManager:
             model_path = WHISPER_MODEL_PATH if os.path.exists(WHISPER_MODEL_PATH) else WHISPER_MODEL_NAME
             logging.info("Loading Whisper model %s", model_path)
             print("Loading Whisper model...", file=sys.stderr)
-            self.whisper_model = whisper.load_model(model_path)
+            try:
+                self.whisper_model = whisper.load_model(model_path)
+            except Exception as e:
+                if "weights_only" in str(e).lower():
+                    logging.warning(
+                        "Retrying Whisper load with weights_only=False due to PyTorch 2.6 change"
+                    )
+                    import torch
+                    orig_load = torch.load
+
+                    def _patched_load(*args, **kwargs):
+                        kwargs.setdefault("weights_only", False)
+                        return orig_load(*args, **kwargs)
+
+                    torch.load = _patched_load
+                    try:
+                        self.whisper_model = whisper.load_model(model_path)
+                    finally:
+                        torch.load = orig_load
+                else:
+                    raise
             logging.info("Whisper model loaded")
             print("Whisper model loaded", file=sys.stderr)
         return self.whisper_model
