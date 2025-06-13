@@ -711,7 +711,11 @@ if __name__ == "__main__":
             results = posts_data
 
         elif input_type == "text":
-            results = deduplicate_posts(generate_posts_from_text(input_data, "text document"))
+            with open(input_data, "r", encoding="utf-8") as f:
+                text_content = f.read()
+            results = deduplicate_posts(
+                generate_posts_from_text(text_content, "text document")
+            )
 
         logging.info("script complete for job %s", job_id)
         print(json.dumps({"status": "complete", "posts": results}))
