@@ -264,8 +264,8 @@ class YouTubeProcessor:
                     if adjusted_ratio > best_ratio:
                         best_ratio = adjusted_ratio
                         # Add context padding to the timestamps
-                        padded_start = max(0, start - context_padding) if start else None
-                        padded_end = (end + context_padding) if end else None
+                        padded_start = max(0, start - context_padding) if start is not None else None
+                        padded_end = (end + context_padding) if end is not None else None
                         best_result = (padded_start, padded_end, combined.strip())
                         
                         logging.debug("New best match: ratio=%.3f, adjusted=%.3f, words=%d, coverage=%.2f", 

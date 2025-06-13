@@ -33,7 +33,7 @@ class GeneratePostsTests(unittest.TestCase):
             '[{"post_text": "first", "source_quote": "q1"}]',
             '[{"post_text": "second", "source_quote": "q2"}]',
         ])
-        main.load_llm = lambda: stub
+        main.load_llm = lambda backend=None: stub
 
         func = main.generate_posts_from_text
         system_prompt = func.__code__.co_consts[1]
@@ -57,7 +57,7 @@ class GeneratePostsTests(unittest.TestCase):
         stub = StubLLM([
             "<think>\nHere is your data:\n[{\"post_text\": \"foo\", \"source_quote\": \"bar\"}]"
         ])
-        main.load_llm = lambda: stub
+        main.load_llm = lambda backend=None: stub
         posts = main.generate_posts_from_text("hello", "text")
         self.assertEqual(len(posts), 1)
         self.assertEqual(posts[0]["post_text"], "foo")
@@ -66,7 +66,7 @@ class GeneratePostsTests(unittest.TestCase):
         stub = StubLLM([
             "<think>doing stuff</think>[{\"post_text\": \"tagged\", \"source_quote\": \"bar\"}]"
         ])
-        main.load_llm = lambda: stub
+        main.load_llm = lambda backend=None: stub
         posts = main.generate_posts_from_text("hello", "text")
         self.assertEqual(len(posts), 1)
         self.assertEqual(posts[0]["post_text"], "tagged")
@@ -75,7 +75,7 @@ class GeneratePostsTests(unittest.TestCase):
         stub = StubLLM([
             '[{\"post_text\": \"tagless\", \"source_quote\": \"bar\"}]</think>'
         ])
-        main.load_llm = lambda: stub
+        main.load_llm = lambda backend=None: stub
         posts = main.generate_posts_from_text("hello", "text")
         self.assertEqual(len(posts), 1)
         self.assertEqual(posts[0]["post_text"], "tagless")
@@ -84,26 +84,26 @@ class GeneratePostsTests(unittest.TestCase):
         output = ("You are a bot. Return an empty JSON array [] if you cannot comply. "
             "Actual data: [{\"post_text\": \"ok\", \"source_quote\": \"q\"}]")
         stub = StubLLM([output])
-        main.load_llm = lambda: stub
+        main.load_llm = lambda backend=None: stub
         posts = main.generate_posts_from_text("hello", "text")
         self.assertEqual(len(posts), 1)
         self.assertEqual(posts[0]["post_text"], "ok")
 
     def test_invalid_json_shape_dict(self):
         stub = StubLLM(['{"foo": "bar"}'])
-        main.load_llm = lambda: stub
+        main.load_llm = lambda backend=None: stub
         with self.assertRaises(ValueError):
             main.generate_posts_from_text("hello", "text")
 
     def test_invalid_json_shape_array_elements(self):
         stub = StubLLM(['["a", "b"]'])
-        main.load_llm = lambda: stub
+        main.load_llm = lambda backend=None: stub
         with self.assertRaises(ValueError):
             main.generate_posts_from_text("hello", "text")
 
     def test_single_post_object(self):
         stub = StubLLM(['{"post_text": "solo", "source_quote": "q"}'])
-        main.load_llm = lambda: stub
+        main.load_llm = lambda backend=None: stub
         posts = main.generate_posts_from_text("hello", "text")
         self.assertEqual(len(posts), 1)
         self.assertEqual(posts[0]["post_text"], "solo")
