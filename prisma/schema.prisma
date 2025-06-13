@@ -17,6 +17,7 @@ model Job {
   inputChecksum String? // SHA256 of URL, text or file contents
   status      String   @default("pending") // pending, processing, complete, failed
   error       String?
+  transcript  String? // Full transcript/text content
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   posts       Post[]

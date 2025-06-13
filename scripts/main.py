@@ -1,83 +1,122 @@
 import sys
 import json
 import os
-import subprocess
-from pathlib import Path
-import wave  # For checking audio properties
-from difflib import SequenceMatcher
 import logging
 import sqlite3
+from pathlib import Path
 
-# Load environment variables from an optional .env file so users can
-# configure settings like YTDLP_COOKIE_FILE without exporting them
-# manually each time. If python-dotenv isn't installed we simply skip
-# loading the file.
-try:  # pragma: no cover - optional dependency
+# Load environment variables from an optional .env file
+try:
     from dotenv import load_dotenv
-
     load_dotenv()
 except Exception:
     pass
 
-# --- LLM & Whisper Model Imports ---
-from llama_cpp import Llama
-import whisper
+# Import our processors and managers
+from processors.youtube_processor import YouTubeProcessor
+from processors.pdf_processor import PDFProcessor  
+from processors.text_processor import TextProcessor
+from models.llm_manager import LLMManager
+from models.whisper_manager import WhisperManager
 
-# --- Configuration ---
-MODEL_DIRECTORY = os.path.expanduser("~/.cache/lm-studio/models")
-
-# LLaMA-style text generator model
-# Default to the Phi-3.1-mini model with a 128k token context window
-LLM_MODEL_PATH = os.path.join(
-    MODEL_DIRECTORY,
-    "lmstudio-community/Phi-3.1-mini-128k-instruct-GGUF/Phi-3.1-mini-128k-instruct-Q4_K_M.gguf",
-)
-
-# Whisper model identifier or path accepted by the openai-whisper library. We
-# default to the "base.en" model name but also allow specifying a path to a
-# locally downloaded model file. When a local path is provided, the helper will
-# load that file directly.
-WHISPER_MODEL_NAME = "base.en"
-# Use a locally downloaded model if available.  The load_model helper accepts a
-# path to a model file so we expand the user's home directory and provide that
-# path.
-WHISPER_MODEL_PATH = os.path.expanduser("~/whisper_models/base.en.pt")
-
-
-# Folder where generated media assets are stored under the repository root
+# Configuration
 PUBLIC_FOLDER = Path(__file__).resolve().parents[1] / "public" / "generated"
 PUBLIC_FOLDER.mkdir(exist_ok=True, parents=True)
 
-# Default watermark image placed under the project's public directory. Users can
-# override this path by setting the WATERMARK_PATH environment variable. If the
-# file doesn't exist the overlay step is skipped.
 WATERMARK_PATH = os.getenv(
     "WATERMARK_PATH",
     str(Path(__file__).resolve().parents[1] / "public" / "aiprepperWM.png"),
 )
 
-# --- Helpers to reuse existing output ---
-def _get_db_path() -> str | None:
-    """Return the absolute path of the SQLite database if available."""
-    logging.debug("_get_db_path: checking DATABASE_URL")
+# Debug logging
+_log_path = os.getenv("LLM_DEBUG_LOG", "llm_debug.log")
+logging.basicConfig(filename=_log_path, level=logging.DEBUG,
+                    format="%(asctime)s %(levelname)s %(message)s")
+logging.info("Logging initialized at %s", _log_path)
+
+# Global managers
+llm_manager = LLMManager()
+whisper_manager = WhisperManager()
+
+def save_transcript_simple(job_id: str, transcript: str):
+    """Save transcript with simple, direct approach."""
+    print(f"💾 SAVING TRANSCRIPT: {len(transcript)} chars for job {job_id}", file=sys.stderr)
+    
+    # Get database path with multiple fallback locations
     db_url = os.getenv("DATABASE_URL")
-    if not db_url:
-        return None
     if db_url.startswith("file:"):
         db_url = db_url[5:]
-    if db_url.startswith("./"):
-        root = Path(__file__).resolve().parents[1]
-        db_url = str(root / db_url[2:])
-    logging.debug("_get_db_path: resolved path %s", db_url)
-    return db_url
-
+    
+    # Try multiple possible locations for the database
+    project_root = Path(__file__).resolve().parents[1]
+    possible_paths = [
+        str(project_root / db_url.lstrip("./")),  # PROJECT_ROOT/dev.db
+        str(project_root / "prisma" / db_url.lstrip("./")),  # PROJECT_ROOT/prisma/dev.db  
+        db_url if os.path.isabs(db_url) else None,  # Absolute path if provided
+    ]
+    
+    db_path = None
+    for path in possible_paths:
+        if path and os.path.exists(path):
+            db_path = path
+            print(f"💾 Found database at: {db_path}", file=sys.stderr)
+            break
+    
+    if not db_path:
+        print(f"❌ Database not found. Tried:", file=sys.stderr)
+        for path in possible_paths:
+            if path:
+                print(f"   - {path} (exists: {os.path.exists(path)})", file=sys.stderr)
+        return False
+    
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Update transcript
+        cursor.execute("UPDATE Job SET transcript = ? WHERE id = ?", (transcript, job_id))
+        rows_updated = cursor.rowcount
+        conn.commit()
+        conn.close()
+        
+        print(f"💾 DATABASE UPDATE: {rows_updated} rows affected", file=sys.stderr)
+        
+        if rows_updated > 0:
+            print("✅ TRANSCRIPT SAVED TO DATABASE", file=sys.stderr)
+            return True
+        else:
+            print("❌ NO ROWS UPDATED - JOB NOT FOUND?", file=sys.stderr)
+            return False
+            
+    except Exception as e:
+        print(f"❌ DATABASE ERROR: {e}", file=sys.stderr)
+        return False
 
 def load_existing_posts(job_id: str) -> list[dict]:
-    """Load posts for *job_id* from the database if present."""
+    """Load posts for job_id from the database if present."""
     logging.info("load_existing_posts: job_id=%s", job_id)
-    db_path = _get_db_path()
-    if not db_path or not os.path.exists(db_path):
+    
+    # Use same database path resolution as save_transcript_simple
+    db_url = os.getenv("DATABASE_URL")
+    if db_url.startswith("file:"):
+        db_url = db_url[5:]
+    
+    project_root = Path(__file__).resolve().parents[1]
+    possible_paths = [
+        str(project_root / db_url.lstrip("./")),  # PROJECT_ROOT/dev.db
+        str(project_root / "prisma" / db_url.lstrip("./")),  # PROJECT_ROOT/prisma/dev.db  
+        db_url if os.path.isabs(db_url) else None,  # Absolute path if provided
+    ]
+    
+    db_path = None
+    for path in possible_paths:
+        if path and os.path.exists(path):
+            db_path = path
+            break
+    
+    if not db_path:
         return []
+    
     try:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
@@ -87,7 +126,7 @@ def load_existing_posts(job_id: str) -> list[dict]:
         )
         rows = cur.fetchall()
         conn.close()
-    except Exception as exc:  # pragma: no cover - DB access is optional
+    except Exception as exc:
         logging.error("load_existing_posts error: %s", exc)
         return []
 
@@ -105,564 +144,175 @@ def load_existing_posts(job_id: str) -> list[dict]:
     logging.info("load_existing_posts: loaded %d posts", len(posts))
     return posts
 
-# --- Debug logging ---
-_log_path = os.getenv("LLM_DEBUG_LOG", "llm_debug.log")
-logging.basicConfig(filename=_log_path, level=logging.DEBUG,
-                    format="%(asctime)s %(levelname)s %(message)s")
-logging.info("Logging initialized at %s", _log_path)
-
-# --- Model Initialization ---
-LLM_TEXT_GENERATOR = None
-LLM_BACKEND = None
-WHISPER_TRANSCRIBER = None
-
-
-class GeminiLLM:
-    def __init__(self, model_name: str = "gemini-2.5-pro-preview"):
-        import google.generativeai as genai  # pragma: no cover - optional
-        api_key = os.getenv("GOOGLE_API_KEY")
-        if not api_key:
-            raise RuntimeError("GOOGLE_API_KEY not set")
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(model_name)
-
-    def create_chat_completion(self, messages, temperature: float, max_tokens: int):
-        prompt = "\n".join(m["content"] for m in messages)
-        resp = self.model.generate_content(
-            prompt,
-            generation_config={
-                "temperature": temperature,
-                "max_output_tokens": max_tokens,
-            },
-        )
-        return {"choices": [{"message": {"content": resp.text}}]}
-
-
-def load_llm(backend: str | None = None):
-    """Initialize and return the global LLM text generator."""
-    global LLM_TEXT_GENERATOR, LLM_BACKEND
-    backend = backend or os.getenv("LLM_BACKEND", "phi")
-    if LLM_TEXT_GENERATOR is None or backend != LLM_BACKEND:
-        LLM_BACKEND = backend
-        if backend == "gemini":
-            logging.info("Loading Gemini model")
-            LLM_TEXT_GENERATOR = GeminiLLM()
-        else:
-            logging.info("Loading LLaMA model from %s", LLM_MODEL_PATH)
-            LLM_TEXT_GENERATOR = Llama(
-                model_path=LLM_MODEL_PATH,
-                n_gpu_layers=-1,
-                n_ctx=8192,
-                verbose=True,
-                chat_format="chatml",
-            )
-        logging.info("LLM model loaded: %s", backend)
-    return LLM_TEXT_GENERATOR
-
-
-def load_whisper():
-    """Initialize and return the global Whisper transcriber."""
-    global WHISPER_TRANSCRIBER
-    if WHISPER_TRANSCRIBER is None:
-        model_path = WHISPER_MODEL_PATH if os.path.exists(WHISPER_MODEL_PATH) else WHISPER_MODEL_NAME
-        logging.info("Loading Whisper model %s", model_path)
-        WHISPER_TRANSCRIBER = whisper.load_model(model_path)
-        logging.info("Whisper model loaded")
-    return WHISPER_TRANSCRIBER
-
-# --- Audio & Video Parsers ---
-def convert_to_wav(video_path, job_id):
-    audio_output_path = PUBLIC_FOLDER / f"{job_id}_audio.wav"
-    command = [
-        'ffmpeg', '-i', str(video_path),
-        '-ar', '16000',      # 16kHz
-        '-ac', '1',          # mono
-        '-y', str(audio_output_path)
-    ]
-    try:
-        logging.info("convert_to_wav: running ffmpeg %s", ' '.join(command))
-        print("Converting video to WAV for Whisper...", file=sys.stderr)
-        subprocess.run(command, check=True, capture_output=True, text=True)
-        print("Conversion successful.", file=sys.stderr)
-        logging.info("convert_to_wav: wrote %s", audio_output_path)
-        return str(audio_output_path)
-    except subprocess.CalledProcessError as e:
-        print(f"FFmpeg error: {e.stderr}", file=sys.stderr)
-        logging.error("convert_to_wav failed: %s", e.stderr)
-        raise RuntimeError(f"FFmpeg failed: {e.stderr}")
-
-def transcribe_audio(wav_path: str) -> dict:
-    """Run Whisper on the provided WAV file and return the full result dict."""
-    whisper_model = load_whisper()
-    logging.info("transcribe_audio: starting on %s", wav_path)
-    result = whisper_model.transcribe(wav_path)
-    logging.info("transcribe_audio: finished")
-    if isinstance(result, dict):
-        return result
-    if isinstance(result, str):
-        return {"text": result, "segments": []}
-    # Fallback if a sequence of segments is returned
-    return {
-        "text": " ".join(getattr(seg, "text", str(seg)) for seg in result),
-        "segments": [
-            {
-                "start": getattr(seg, "start", None),
-                "end": getattr(seg, "end", None),
-                "text": getattr(seg, "text", str(seg)),
-            }
-            for seg in result
-        ],
-    }
-
-import re
-
-# Remove paired <think>...</think> blocks that some LLMs prepend.
-_THINK_TAG_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
-
-def _extract_json(text: str):
-    """Extract the most relevant JSON object or array found in *text*.
-
-    Some models may echo the system prompt which includes example JSON like
-    ``[]``. We therefore scan the entire string and return the **largest** valid
-    JSON object/array found rather than the first occurrence.
-    """
-    logging.debug("_extract_json input: %s", text[:200])
-    decoder = json.JSONDecoder()
-    text = text.strip()
-    # Remove any <think>...</think> commentary that may precede the JSON
-    text = _THINK_TAG_RE.sub("", text)
-    text = text.replace("<think>", "")   # handle stray opening tag
-    text = text.replace("</think>", "")  # handle stray closing tag
-    # Remove Markdown-style code fences if present
-    if text.startswith("```"):
-        text = re.sub(r"^```\w*\n", "", text)
-        if text.endswith("```"):
-            text = text[:-3]
-
-    best_obj = None
-    best_len = -1
-    for idx, ch in enumerate(text):
-        if ch in "[{":
-            try:
-                obj, end = decoder.raw_decode(text[idx:])
-            except json.JSONDecodeError:
-                continue
-            length = end
-            if length > best_len:
-                best_obj = obj
-                best_len = length
-    if best_obj is not None:
-        return best_obj
-    logging.error("_extract_json: failed to find JSON")
-    raise ValueError("No JSON object found in LLM output.")
-
-def _normalize(text: str) -> str:
-    """Normalize text for fuzzy matching."""
-    return re.sub(r"[^a-z0-9\s]", "", text.lower())
-
-
-def deduplicate_posts(posts: list[dict]) -> list[dict]:
-    """Remove posts that share the same ``source_quote``."""
-    logging.info("deduplicate_posts: starting with %d posts", len(posts))
-    seen = set()
-    unique = []
-    for post in posts:
-        quote = post.get("source_quote")
-        if quote and quote in seen:
-            continue
-        if quote:
-            seen.add(quote)
-        unique.append(post)
-    logging.info("deduplicate_posts: returning %d posts", len(unique))
-    return unique
-
-def find_quote_timestamps(segments, quote, *, window: int = 20, threshold: float = 0.6):
-    """Return start/end times and the snippet most similar to the quote.
-
-    The search considers windows of ``window`` segments, building up candidate
-    snippets and comparing them to the normalized quote using ``SequenceMatcher``
-    similarity. The best scoring snippet is returned if its ratio meets or
-    exceeds ``threshold``. Otherwise ``(None, None, None)`` is returned.
-    """
-    logging.debug("find_quote_timestamps: searching for '%s'", quote)
-    if not quote:
-        return None, None, None
-
-    target = _normalize(quote)
-    best_ratio = 0.0
-    best_result = (None, None, None)
-    n = len(segments)
-
-    for i in range(n):
-        combined = ""
-        start = None
-        end = None
-        for j in range(window):
-            if i + j >= n:
-                break
-            seg = segments[i + j]
-            if start is None:
-                start = seg.get("start")
-            end = seg.get("end", end)
-            if combined:
-                combined += " "
-            combined += seg.get("text", "")
-
-            ratio = SequenceMatcher(None, _normalize(combined), target).ratio()
-            if ratio > best_ratio:
-                best_ratio = ratio
-                best_result = (start, end, combined.strip())
-
-    if best_ratio >= threshold:
-        logging.debug("find_quote_timestamps: found %s-%s (score %.2f)", best_result[0], best_result[1], best_ratio)
-        return best_result
-    logging.debug("find_quote_timestamps: no match")
-    return None, None, None
-
-def extract_clip(video_path, start, end, output_path, watermark_path=None):
-    """Extract a clip from ``video_path`` between ``start`` and ``end``.
-
-    ``ffmpeg`` is invoked with output seeking so the clip begins at the exact
-    timestamp. Streams are re-encoded to keep audio and video perfectly in sync
-    even when ``start`` does not land on a keyframe. If ``watermark_path``
-    points to an existing image it is overlaid in the bottom right corner of the
-    clip.
-    """
-
-    command = ["ffmpeg", "-i", str(video_path)]
-
-    if watermark_path and os.path.exists(watermark_path):
-        command += [
-            "-i",
-            str(watermark_path),
-            "-filter_complex",
-            "[1:v]scale=400:-1[wm];[0:v][wm]overlay=0:0",
-            "-map",
-            "0:a?",
-        ]
-
-    command += [
-        "-ss",
-        str(start),  # Output seek start time for frame-accurate cut
-        "-to",
-        str(end),  # Output seek end time
-        "-c:v",
-        "libx264",  # Re-encode video to ensure sync
-        "-c:a",
-        "aac",  # Re-encode audio
-        "-movflags",
-        "+faststart",  # Allow fast playback start
-        "-y",  # Overwrite output file if it exists
-        str(output_path),  # Output file
-    ]
-    try:
-        # The logging call was correct, joining the command for display.
-        logging.info(
-            "extract_clip: ffmpeg %s", ' '.join(command)
-        )
-        # The subprocess call is correct.
-        subprocess.run(command, check=True, capture_output=True, text=True)
-        logging.info("extract_clip: wrote %s", output_path)
-        return True
-    except subprocess.CalledProcessError as e:
-        # The error handling is also correct.
-        print(f"FFmpeg clip error: {e.stderr}", file=sys.stderr)
-        logging.error("extract_clip failed: %s", e.stderr)
-        return False
-    
-    
-def fetch_youtube_transcript(url, languages=("en",)):
-    """Return transcript text and segment timings if YouTube provides them."""
-
-    try:  # pragma: no cover - optional dependency
-        from youtube_transcript_api import YouTubeTranscriptApi
-    except Exception:
-        logging.info("youtube_transcript_api not installed")
-        return None, None
-
-    video_id = None
-    m = re.search(r"(?:v=|/)([0-9A-Za-z_-]{11})(?:[?&]|$)", url)
-    if m:
-        video_id = m.group(1)
-    if not video_id:
-        logging.info("Could not extract video id from %s", url)
-        return None, None
-
-    try:
-        transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
-        transcript = None
-        for lang in languages:
-            try:
-                transcript = transcripts.find_manually_created_transcript([lang])
-                break
-            except Exception:
-                pass
-        if transcript is None:
-            for lang in languages:
-                try:
-                    transcript = transcripts.find_generated_transcript([lang])
-                    break
-                except Exception:
-                    pass
-        if transcript is None:
-            return None, None
-        items = transcript.fetch()
-        segments = [
-            {"start": it["start"], "end": it["start"] + it["duration"], "text": it["text"]}
-            for it in items
-        ]
-        text = " ".join(it["text"] for it in items)
-        return text, segments
-    except Exception as e:
-        logging.info("fetch_youtube_transcript failed: %s", e)
-        return None, None
-
-
-def parse_youtube(url, job_id):
-    import yt_dlp
-    from yt_dlp.utils import DownloadError
-
-    class _Logger:
-        def debug(self, msg):
-            pass
-        def warning(self, msg):
-            pass
-        def error(self, msg):
-            print(msg, file=sys.stderr)
-
-    logging.info("parse_youtube: checking transcripts for %s", url)
-    transcript_text, segments = fetch_youtube_transcript(url)
-
-    logging.info("parse_youtube: downloading %s", url)
-    print("Downloading YouTube video...", file=sys.stderr)
-    video_path = PUBLIC_FOLDER / f"{job_id}_full.mp4"
-    video_format = os.getenv(
-        "YTDLP_VIDEO_FORMAT",
-        "bestvideo[height<=720]+bestaudio/best[height<=720]",
-    )
-    logging.info("parse_youtube: using format %s", video_format)
-    ydl_opts = {
-        'format': video_format,
-        'outtmpl': str(video_path),
-        'quiet': True,
-        'no_warnings': True,
-        'merge_output_format': 'mp4',
-        'logger': _Logger(),
-    }
-    cookie_file = os.getenv("YTDLP_COOKIE_FILE")
-    if cookie_file and os.path.exists(cookie_file):
-        print(f"Using cookies from {cookie_file}", file=sys.stderr)
-        ydl_opts['cookiefile'] = cookie_file
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+def cleanup_old_files(days=30):
+    """Clean up files older than specified days."""
+    import time
+    cutoff = time.time() - (days * 24 * 60 * 60)
+    cleaned = 0
+    for file_path in PUBLIC_FOLDER.glob("*"):
         try:
-            ydl.download([url])
-        except DownloadError as e:
-            message = str(e)
-            if "Sign in to confirm" in message:
-                message += (
-                    "\nSet the YTDLP_COOKIE_FILE environment variable to the "
-                    "path of a browser-exported cookies file so yt_dlp can "
-                    "authenticate."
-                )
-            raise RuntimeError(f"Failed to download video: {message}")
-    logging.info("parse_youtube: downloaded to %s", video_path)
-    print(f"Downloaded to: {video_path}", file=sys.stderr)
-
-    if not transcript_text:
-        wav_path = convert_to_wav(video_path, job_id)
-
-        logging.info("parse_youtube: transcribing")
-        print("Transcribing audio...", file=sys.stderr)
-        transcript_result = transcribe_audio(wav_path)
-        transcript_text = transcript_result.get("text", "")
-        segments = transcript_result.get("segments", [])
-        logging.info(
-            "parse_youtube: transcription complete (%d chars, %d segments)",
-            len(transcript_text),
-            len(segments),
-        )
-        print("Transcription complete.", file=sys.stderr)
-    else:
-        logging.info(
-            "parse_youtube: using existing transcript (%d chars, %d segments)",
-            len(transcript_text),
-            len(segments),
-        )
-
-    return transcript_text, str(video_path), segments
-
-def parse_pdf(file_path, job_id):
-    import fitz
-    logging.info("parse_pdf: opening %s", file_path)
-    doc = fitz.open(file_path)
-    full_text = ""
-    image_paths = []
-    for page_num, page in enumerate(doc):
-        full_text += f"\n\n--- Page {page_num + 1} ---\n\n"
-        full_text += page.get_text("text")
-        image_list = page.get_images(full=True)
-        for img_index, img in enumerate(image_list):
-            xref = img[0]
-            base_image = doc.extract_image(xref)
-            image_bytes = base_image["image"]
-            image_ext = base_image["ext"]
-            img_filename = f"{job_id}_page{page_num + 1}_img{img_index}.{image_ext}"
-            img_path = PUBLIC_FOLDER / img_filename
-            with open(img_path, "wb") as f:
-                f.write(image_bytes)
-            image_paths.append({"path": f"/generated/{img_filename}", "page": page_num + 1})
-    logging.info("parse_pdf: extracted %d pages, %d images", doc.page_count, len(image_paths))
-    return full_text, image_paths
-
-# --- LLM Post Generation ---
-def generate_posts_from_text(context, source_type):
-    system_prompt_template = """You are a viral social media content creator. Your task is to analyze the provided text and extract key quotes, ideas, and concepts.
-For each extracted item, create a short, engaging social media post.
-You MUST provide your output as a valid JSON array of objects.
-Respond with ONLY the JSON text – no Markdown, explanations or other prose. If you cannot generate content, return an empty JSON array `[]`.
-Each object in the array must have the following keys:
-- "post_text": A string containing the social media post content (max 280 characters), including relevant hashtags.
-- "source_quote": The exact quote or phrase from the source text that inspired the post.
-- Each `source_quote` value must be unique across the array; do not repeat the same quote for multiple posts.
-
-If the source is a PDF and the input includes page number markers (e.g., "--- Page 5 ---"), you MUST also include:
-- "page_number": The integer page number where the content was found.
-
-The input text may be a chunk of a larger document. Focus on extracting relevant information from this specific chunk.
-
-Here is an example of the required output format:
-[
-  {
-    "post_text": "Mind-blowing insight! The key to success is not just hard work, but smart work. #Productivity #Success",
-    "source_quote": "The key to success is not just hard work, but smart work"
-  }
-]
-"""
-
-    # Estimate tokens per character roughly
-    chars_per_token = 4
-    output_token_buffer = 1024
-    # Max tokens for the content after accounting for system prompt, user prompt, and output
-    max_context_tokens = 8192 - (len(system_prompt_template) + output_token_buffer)
-    max_context_chars = max_context_tokens * chars_per_token
-
-    logging.info(
-        "generate_posts_from_text: %d chars from %s", len(context), source_type
-    )
-    llm = load_llm()
-    all_posts = []
-    # Split context into chunks
-    for i in range(0, len(context), max_context_chars):
-        chunk = context[i:i + max_context_chars]
-        logging.debug(
-            "generate_posts_from_text: processing chunk %d-%d", i, i + len(chunk)
-        )
-
-        messages = [
-            {"role": "system", "content": system_prompt_template},
-            {
-                "role": "user",
-                "content": (
-                    f"Here is the content from a {source_type}. "
-                    f"Please generate the JSON array now:\n\n{chunk}"
-                ),
-            },
-        ]
-
-        logging.debug("LLM INPUT: %s", json.dumps(messages, ensure_ascii=False))
-
-        chat_completion = llm.create_chat_completion(
-            messages=messages,
-            temperature=0.2,
-            max_tokens=output_token_buffer,
-        )
-
-        response_content = chat_completion['choices'][0]['message']['content']
-        logging.debug("LLM OUTPUT: %s", response_content)
-        print("--- RAW LLM OUTPUT ---", file=sys.stderr)
-        print(response_content, file=sys.stderr)
-        print("--- END RAW LLM OUTPUT ---", file=sys.stderr)
-
-        try:
-            data = _extract_json(response_content)
-            if isinstance(data, dict):
-                if len(data) == 1 and isinstance(list(data.values())[0], list):
-                    posts = list(data.values())[0]
-                elif "post_text" in data and "source_quote" in data:
-                    posts = [data]
-                else:
-                    raise ValueError(
-                        "JSON object does not contain a single list value"
-                    )
-            elif isinstance(data, list):
-                posts = data
-            else:
-                raise ValueError("JSON output must be a list of objects")
-
-            if any(not isinstance(p, dict) for p in posts):
-                raise ValueError("JSON array must contain objects")
-
-            all_posts.extend(posts)
+            if file_path.stat().st_mtime < cutoff:
+                file_path.unlink()
+                cleaned += 1
         except Exception as e:
-            # Propagate a clear error so the caller can fail the job instead of
-            # continuing with empty results.
-            error_msg = f"Failed to parse LLM output: {e}. Raw output: {response_content}"
-            print(f"Error parsing JSON output: {e}", file=sys.stderr)
-            print(f"Raw output: {response_content}", file=sys.stderr)
-            raise ValueError(error_msg)
+            logging.warning("Failed to delete old file %s: %s", file_path, e)
+    if cleaned > 0:
+        logging.info("Cleaned up %d old files", cleaned)
+        print(f"Cleaned up {cleaned} old files", file=sys.stderr)
 
-    logging.info(
-        "generate_posts_from_text: produced %d posts", len(all_posts)
-    )
-    return all_posts
+def process_clip_request(job_id, post_id, quote):
+    """Handle clip extraction request."""
+    youtube_processor = YouTubeProcessor(PUBLIC_FOLDER, WATERMARK_PATH)
+    
+    segments_file = PUBLIC_FOLDER / f"{job_id}_segments.json"
+    video_path = PUBLIC_FOLDER / f"{job_id}_full.mp4"
+    
+    if not segments_file.exists() or not video_path.exists():
+        raise RuntimeError("Required files not found.")
+    
+    with open(segments_file, "r") as f:
+        segments = json.load(f)
 
-# --- Main Execution ---
+    start, end, snippet = youtube_processor.find_quote_timestamps(segments, quote)
+    if start is None or end is None:
+        raise RuntimeError("Quote not found.")
+
+    clip_path = PUBLIC_FOLDER / f"{post_id}.mp4"
+    if not youtube_processor.extract_clip(video_path, start, end, clip_path):
+        raise RuntimeError("Clip extraction failed.")
+
+    result = {
+        "status": "complete",
+        "media_path": f"/generated/{post_id}.mp4",
+        "start_time": start,
+        "end_time": end,
+    }
+    if snippet:
+        result["quote_snippet"] = snippet
+
+    return result
+
+def process_content(input_type, input_data, job_id, llm_backend):
+    """Main content processing function."""
+    print(f"🚀 PROCESSING: {input_type} for job {job_id}", file=sys.stderr)
+    
+    # Check for existing posts first
+    existing_posts = load_existing_posts(job_id)
+    existing_media = list(PUBLIC_FOLDER.glob(f"{job_id}_*"))
+    if existing_posts or existing_media:
+        logging.info("Reusing existing output for job %s", job_id)
+        print("Found existing results, reusing...", file=sys.stderr)
+        return {"status": "complete", "posts": existing_posts}
+
+    # Clean up old files periodically
+    cleanup_old_files()
+
+    # Load models
+    llm_manager.load_llm(llm_backend)
+    whisper_model = whisper_manager.load_whisper()
+
+    # Initialize processors
+    youtube_processor = YouTubeProcessor(PUBLIC_FOLDER, WATERMARK_PATH)
+    pdf_processor = PDFProcessor(PUBLIC_FOLDER)
+    text_processor = TextProcessor()
+
+    results = []
+    transcript_text = ""
+    
+    print(f"📝 STARTING CONTENT PROCESSING...", file=sys.stderr)
+    
+    if input_type == "youtube":
+        print("📺 Processing YouTube video...", file=sys.stderr)
+        transcript_text, full_video_path, segments = youtube_processor.process(
+            input_data, job_id, whisper_model
+        )
+        if not transcript_text.strip():
+            raise ValueError("Transcription failed or video contains no speech.")
+        
+        print(f"📝 GOT TRANSCRIPT: {len(transcript_text)} characters", file=sys.stderr)
+        posts_data = llm_manager.generate_posts_from_text(transcript_text, "YouTube video")
+        results = posts_data
+
+    elif input_type == "pdf":
+        print("📄 Processing PDF...", file=sys.stderr)
+        transcript_text, image_paths = pdf_processor.process(input_data, job_id)
+        
+        print(f"📝 GOT PDF TEXT: {len(transcript_text)} characters", file=sys.stderr)
+        posts_data = llm_manager.generate_posts_from_text(transcript_text, "PDF document")
+        
+        # Associate images with posts based on page numbers
+        for post in posts_data:
+            page = post.get('page_number')
+            if page:
+                relevant_image = next((img for img in image_paths if img['page'] == page), None)
+                if relevant_image:
+                    post['media_path'] = relevant_image['path']
+        results = posts_data
+
+    elif input_type == "text":
+        print("📝 Processing text...", file=sys.stderr)
+        transcript_text = text_processor.process(input_data, job_id)
+        
+        print(f"📝 GOT TEXT: {len(transcript_text)} characters", file=sys.stderr)
+        results = llm_manager.generate_posts_from_text(transcript_text, "text document")
+
+    # SAVE TRANSCRIPT - This is the key part!
+    if transcript_text and transcript_text.strip():
+        print("💾 ATTEMPTING TO SAVE TRANSCRIPT...", file=sys.stderr)
+        
+        # Save to database
+        db_success = save_transcript_simple(job_id, transcript_text)
+        
+        # Also save to file as backup
+        transcript_file = PUBLIC_FOLDER / f"{job_id}_transcript.txt"
+        try:
+            with open(transcript_file, "w", encoding="utf-8") as f:
+                f.write(transcript_text)
+            print(f"📁 BACKUP FILE SAVED: {transcript_file}", file=sys.stderr)
+        except Exception as e:
+            print(f"📁 BACKUP FILE ERROR: {e}", file=sys.stderr)
+        
+        if db_success:
+            print("✅ TRANSCRIPT SAVE COMPLETE", file=sys.stderr)
+        else:
+            print("⚠️  DATABASE SAVE FAILED (but backup file created)", file=sys.stderr)
+    else:
+        print("❌ NO TRANSCRIPT TO SAVE", file=sys.stderr)
+
+    logging.info("Processing complete for job %s", job_id)
+    print("🎉 PROCESSING COMPLETE!", file=sys.stderr)
+    return {"status": "complete", "posts": results}
+
 if __name__ == "__main__":
     logging.info("script start: %s", sys.argv)
+    
     if len(sys.argv) < 2:
         print(json.dumps({"status": "failed", "error": "Internal error: Incorrect script arguments."}), file=sys.stderr)
         sys.exit(1)
 
     input_type = sys.argv[1]
 
+    # Handle clip extraction requests
     if input_type == "clip":
         if len(sys.argv) < 5:
             print(json.dumps({"status": "failed", "error": "Internal error: Incorrect script arguments."}), file=sys.stderr)
             sys.exit(1)
+        
         job_id = sys.argv[2]
         post_id = sys.argv[3]
         quote = sys.argv[4]
 
-        segments_file = PUBLIC_FOLDER / f"{job_id}_segments.json"
-        video_path = PUBLIC_FOLDER / f"{job_id}_full.mp4"
-        if not segments_file.exists() or not video_path.exists():
-            print(json.dumps({"status": "failed", "error": "Required files not found."}), file=sys.stderr)
-            sys.exit(1)
-        with open(segments_file, "r") as f:
-            segments = json.load(f)
-
-        start, end, snippet = find_quote_timestamps(segments, quote)
-        if start is None or end is None:
-            print(json.dumps({"status": "failed", "error": "Quote not found."}), file=sys.stderr)
+        try:
+            result = process_clip_request(job_id, post_id, quote)
+            print(json.dumps(result))
+            sys.exit(0)
+        except Exception as e:
+            error_msg = str(e)
+            logging.error("clip extraction error: %s", error_msg)
+            print(json.dumps({"status": "failed", "error": error_msg}), file=sys.stderr)
             sys.exit(1)
 
-        clip_path = PUBLIC_FOLDER / f"{post_id}.mp4"
-        if not extract_clip(video_path, start, end, clip_path, WATERMARK_PATH):
-            print(json.dumps({"status": "failed", "error": "Clip extraction failed."}), file=sys.stderr)
-            sys.exit(1)
-
-        result = {
-            "status": "complete",
-            "media_path": f"/generated/{post_id}.mp4",
-            "start_time": start,
-            "end_time": end,
-        }
-        if snippet:
-            result["quote_snippet"] = snippet
-
-        print(json.dumps(result))
-        sys.exit(0)
-
+    # Handle content processing requests
     if len(sys.argv) < 4:
         print(json.dumps({"status": "failed", "error": "Internal error: Incorrect script arguments."}), file=sys.stderr)
         sys.exit(1)
@@ -671,57 +321,14 @@ if __name__ == "__main__":
     job_id = sys.argv[3]
     llm_backend = sys.argv[4] if len(sys.argv) >= 5 else "phi"
 
-    existing_posts = load_existing_posts(job_id)
-    existing_media = list(PUBLIC_FOLDER.glob(f"{job_id}_*"))
-    if existing_posts or existing_media:
-        logging.info("Reusing existing output for job %s", job_id)
-        print(json.dumps({"status": "complete", "posts": existing_posts}))
-        sys.exit(0)
-
-    load_llm(llm_backend)
-    load_whisper()
-
-    results = []
     try:
-        logging.info("processing %s input", input_type)
-        if input_type == "youtube":
-            transcript_text, full_video_path, segments = parse_youtube(input_data, job_id)
-            if not transcript_text.strip():
-                raise ValueError("Transcription failed or video contains no speech.")
-            posts_data = generate_posts_from_text(transcript_text, "YouTube video")
-            posts_data = deduplicate_posts(posts_data)
-
-            segments_file = PUBLIC_FOLDER / f"{job_id}_segments.json"
-            with open(segments_file, "w") as f:
-                json.dump(segments, f)
-
-            results = posts_data
-
-        elif input_type == "pdf":
-            text, image_paths = parse_pdf(input_data, job_id)
-            posts_data = generate_posts_from_text(text, "PDF document")
-            posts_data = deduplicate_posts(posts_data)
-            for post in posts_data:
-                page = post.get('page_number')
-                if page:
-                    relevant_image = next((img for img in image_paths if img['page'] == page), None)
-                    if relevant_image:
-                        post['media_path'] = relevant_image['path']
-            results = posts_data
-
-        elif input_type == "text":
-            with open(input_data, "r", encoding="utf-8") as f:
-                text_content = f.read()
-            results = deduplicate_posts(
-                generate_posts_from_text(text_content, "text document")
-            )
-
-        logging.info("script complete for job %s", job_id)
-        print(json.dumps({"status": "complete", "posts": results}))
-
+        result = process_content(input_type, input_data, job_id, llm_backend)
+        print(json.dumps(result))
+        sys.exit(0)
     except Exception as e:
         import traceback
         error_message = f"An unexpected error occurred: {str(e)}"
         logging.error("script error: %s", error_message)
+        logging.error("traceback: %s", traceback.format_exc())
         print(json.dumps({"status": "failed", "error": error_message}), file=sys.stderr)
         sys.exit(1)

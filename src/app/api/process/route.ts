@@ -8,6 +8,9 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import crypto from 'crypto';
 
+// Job timeout: 30 minutes
+const JOB_TIMEOUT = 30 * 60 * 1000;
+
 // Helper to parse multipart form data
 const parseForm = async (
     req: NextRequest
@@ -68,10 +71,41 @@ export const buildErrorMessage = (
     return errorMessage;
 };
 
+async function checkForTimedOutJobs() {
+    // Check for and mark timed-out jobs as failed.
+    try {
+        const cutoff = new Date(Date.now() - JOB_TIMEOUT);
+        const timedOutJobs = await prisma.job.findMany({
+            where: {
+                status: 'processing',
+                createdAt: { lt: cutoff }
+            }
+        });
+
+        if (timedOutJobs.length > 0) {
+            await prisma.job.updateMany({
+                where: {
+                    id: { in: timedOutJobs.map(job => job.id) }
+                },
+                data: {
+                    status: 'failed',
+                    error: 'Job timed out after 30 minutes'
+                }
+            });
+            console.log(`Marked ${timedOutJobs.length} jobs as timed out`);
+        }
+    } catch (error) {
+        console.error('Error checking for timed out jobs:', error);
+    }
+}
 
 export async function POST(req: NextRequest) {
     try {
         console.log('POST /api/process received');
+
+        // Check for timed out jobs periodically
+        await checkForTimedOutJobs();
+
         const { fields, files, tempDir } = await parseForm(req);
         console.log('Form fields:', fields);
         const { inputType, text, url, llmModel } = fields;
@@ -89,7 +123,7 @@ export async function POST(req: NextRequest) {
             }
         }
 
-       // 1. Determine input identifier and checksum then check for existing completed job
+        // 1. Determine input identifier and checksum then check for existing completed job
         let inputDataValue = '';
         if (inputType === 'youtube') inputDataValue = url;
         if (inputType === 'text') inputDataValue = text.substring(0, 200);
@@ -160,7 +194,14 @@ export async function POST(req: NextRequest) {
         console.log('Running script', pythonScriptPath, scriptArgs.join(' '));
         const pythonProcess = spawn(venvPython, [pythonScriptPath, ...scriptArgs]);
 
+        // Set a timeout for the Python process
+        const processTimeout = setTimeout(() => {
+            console.log('Python process timed out, killing...');
+            pythonProcess.kill('SIGTERM');
+        }, JOB_TIMEOUT);
+
         pythonProcess.on('error', async (err) => {
+            clearTimeout(processTimeout);
             console.error('Failed to start Python process:', err);
             await prisma.job.update({
                 where: { id: job.id },
@@ -181,10 +222,21 @@ export async function POST(req: NextRequest) {
             scriptError += data.toString();
         });
 
-        pythonProcess.on('close', async (code) => {
-            console.log('Python process exited with code', code);
+        pythonProcess.on('close', async (code, signal) => {
+            clearTimeout(processTimeout);
+            console.log('Python process exited with code', code, 'signal', signal);
+
             try {
-                if (code === 0 && scriptOutput) {
+                if (signal === 'SIGTERM') {
+                    // Process was killed due to timeout
+                    await prisma.job.update({
+                        where: { id: job.id },
+                        data: {
+                            status: 'failed',
+                            error: 'Job timed out after 30 minutes'
+                        },
+                    });
+                } else if (code === 0 && scriptOutput) {
                     const result = JSON.parse(scriptOutput);
                     await prisma.job.update({
                         where: { id: job.id },
@@ -241,6 +293,9 @@ export async function GET(req: NextRequest) {
     if (!jobId) {
         return NextResponse.json({ error: 'jobId is required' }, { status: 400 });
     }
+
+    // Check for timed out jobs when polling
+    await checkForTimedOutJobs();
 
     const job = await prisma.job.findUnique({
         where: { id: jobId },
