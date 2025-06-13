@@ -4,3 +4,4 @@ python-dotenv
 google-generativeai
 yt-dlp
 youtube-transcript-api
+PyMuPDF
