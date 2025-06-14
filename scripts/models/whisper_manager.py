@@ -124,9 +124,66 @@ class WhisperManager:
             
         return self.whisper_model
 
+    def get_audio_duration(self, wav_path):
+        """Get the actual duration of the audio file for validation."""
+        try:
+            probe_cmd = ["ffprobe", "-v", "quiet", "-show_entries", "format=duration", "-of", "csv=p=0", str(wav_path)]
+            result = subprocess.run(probe_cmd, capture_output=True, text=True)
+            duration = float(result.stdout.strip()) if result.stdout.strip() else 0
+            print(f"🎵 AUDIO FILE DURATION: {duration:.1f}s ({duration/60:.1f} minutes)", file=sys.stderr)
+            return duration
+        except Exception as e:
+            print(f"⚠️  Could not determine audio duration: {e}", file=sys.stderr)
+            return 0
+
+    def validate_and_fix_timestamps(self, segments, audio_duration):
+        """Validate segment timestamps against actual audio duration and fix if needed."""
+        if not segments or audio_duration <= 0:
+            return segments
+        
+        # Find max timestamp in segments
+        max_timestamp = 0
+        for segment in segments:
+            end_time = segment.get('end', 0)
+            if end_time > max_timestamp:
+                max_timestamp = end_time
+        
+        print(f"🔍 TIMESTAMP VALIDATION:", file=sys.stderr)
+        print(f"   Audio duration: {audio_duration:.1f}s", file=sys.stderr)
+        print(f"   Max segment timestamp: {max_timestamp:.1f}s", file=sys.stderr)
+        
+        # Check if timestamps are reasonable (within 10% tolerance)
+        if max_timestamp > audio_duration * 1.1:
+            print(f"   ❌ INVALID TIMESTAMPS! Segments extend {max_timestamp - audio_duration:.1f}s beyond audio", file=sys.stderr)
+            print(f"   🔧 Attempting to fix by scaling timestamps...", file=sys.stderr)
+            
+            # Scale all timestamps to fit within audio duration
+            scale_factor = (audio_duration * 0.95) / max_timestamp
+            print(f"   Scale factor: {scale_factor:.3f}", file=sys.stderr)
+            
+            fixed_segments = []
+            for segment in segments:
+                fixed_segment = segment.copy()
+                if 'start' in fixed_segment and fixed_segment['start'] is not None:
+                    fixed_segment['start'] = fixed_segment['start'] * scale_factor
+                if 'end' in fixed_segment and fixed_segment['end'] is not None:
+                    fixed_segment['end'] = fixed_segment['end'] * scale_factor
+                fixed_segments.append(fixed_segment)
+            
+            # Verify fix
+            new_max = max(seg.get('end', 0) for seg in fixed_segments)
+            print(f"   ✅ Fixed! New max timestamp: {new_max:.1f}s", file=sys.stderr)
+            return fixed_segments
+        else:
+            print(f"   ✅ Timestamps look valid", file=sys.stderr)
+            return segments
+
     def transcribe_audio(self, wav_path):
         """Transcribe audio using either whisper.cpp or OpenAI Whisper."""
         model = self.load_whisper()
+        
+        # Get audio duration for validation
+        audio_duration = self.get_audio_duration(wav_path)
         
         # Check if we're using whisper.cpp
         if isinstance(model, dict) and model.get('type') == 'whisper_cpp':
@@ -135,6 +192,9 @@ class WhisperManager:
                 result = self._transcribe_with_whisper_cpp(wav_path, model)
                 if result is not None:
                     print("✅ WHISPER.CPP TRANSCRIPTION SUCCESSFUL!", file=sys.stderr)
+                    # Validate and fix timestamps
+                    if 'segments' in result:
+                        result['segments'] = self.validate_and_fix_timestamps(result['segments'], audio_duration)
                     return result
                 # If result is None, fall through to OpenAI Whisper
                 print("⚠️  WHISPER.CPP RETURNED NULL - FALLING BACK TO OPENAI WHISPER", file=sys.stderr)
@@ -165,10 +225,16 @@ class WhisperManager:
                 else:
                     raise
             
-            return self._transcribe_with_openai_whisper(wav_path, fallback_model)
+            result = self._transcribe_with_openai_whisper(wav_path, fallback_model)
         else:
             print("🐌 USING OPENAI WHISPER DIRECTLY (NO WHISPER.CPP AVAILABLE)", file=sys.stderr)
-            return self._transcribe_with_openai_whisper(wav_path, model)
+            result = self._transcribe_with_openai_whisper(wav_path, model)
+        
+        # Validate and fix timestamps for OpenAI Whisper results too
+        if result and 'segments' in result:
+            result['segments'] = self.validate_and_fix_timestamps(result['segments'], audio_duration)
+        
+        return result
 
     def _transcribe_with_whisper_cpp(self, wav_path, model_config):
         """Transcribe using whisper.cpp executable."""
@@ -252,7 +318,6 @@ class WhisperManager:
                     whisper_result = json.load(f)
                 
                 print(f"🔍 DEBUG: whisper.cpp JSON structure: {type(whisper_result)}", file=sys.stderr)
-                print(f"🔍 DEBUG: First few keys/items: {list(whisper_result.keys()) if isinstance(whisper_result, dict) else str(whisper_result)[:200]}", file=sys.stderr)
                 
                 # Convert whisper.cpp JSON format to OpenAI Whisper format
                 segments = []
@@ -276,6 +341,7 @@ class WhisperManager:
                             for segment in transcription_data:
                                 if isinstance(segment, dict):
                                     text = segment.get('text', '').strip()
+                                    
                                     # Handle different timestamp formats more robustly
                                     start_time = segment.get('start', 0)
                                     end_time = segment.get('end', 0)
@@ -297,16 +363,22 @@ class WhisperManager:
                                         except (ValueError, TypeError):
                                             end_time = 0.0
                                     else:
-                                        # Convert start/end times safely
+                                        # Convert start/end times safely and ensure they're reasonable
                                         try:
                                             start_time = float(start_time)
+                                            # Check for obviously wrong timestamps (like negative or way too large)
+                                            if start_time < 0:
+                                                start_time = 0.0
                                         except (ValueError, TypeError):
                                             start_time = 0.0
                                         
                                         try:
                                             end_time = float(end_time)
+                                            # Check for obviously wrong timestamps
+                                            if end_time < start_time:
+                                                end_time = start_time + 1.0  # Default 1 second duration
                                         except (ValueError, TypeError):
-                                            end_time = 0.0
+                                            end_time = start_time + 1.0
                                     
                                     if text:
                                         segments.append({
@@ -334,13 +406,17 @@ class WhisperManager:
                                     # Convert start/end times safely
                                     try:
                                         start_time = float(segment.get('start', 0))
+                                        if start_time < 0:
+                                            start_time = 0.0
                                     except (ValueError, TypeError):
                                         start_time = 0.0
                                     
                                     try:
                                         end_time = float(segment.get('end', 0))
+                                        if end_time < start_time:
+                                            end_time = start_time + 1.0
                                     except (ValueError, TypeError):
-                                        end_time = 0.0
+                                        end_time = start_time + 1.0
                                     
                                     segments.append({
                                         'start': start_time,
@@ -365,6 +441,12 @@ class WhisperManager:
                     print(f"🔍 Raw JSON: {json.dumps(whisper_result, indent=2)[:500]}...", file=sys.stderr)
                     raise RuntimeError(f"Failed to parse whisper.cpp JSON output: {parse_error}")
                 
+                # Debug timestamp ranges
+                if segments:
+                    min_time = min(seg.get('start', 0) for seg in segments)
+                    max_time = max(seg.get('end', 0) for seg in segments)
+                    print(f"🔍 WHISPER.CPP TIMESTAMP RANGE: {min_time:.1f}s - {max_time:.1f}s", file=sys.stderr)
+                
                 logging.info("whisper transcription complete: %d chars, %d segments", 
                            len(full_text), len(segments))
                 print(f"✅ WHISPER.CPP SUCCESS: {len(full_text)} characters, {len(segments)} segments", file=sys.stderr)
@@ -387,6 +469,14 @@ class WhisperManager:
         
         result = model.transcribe(wav_path)
         logging.info("transcribe_audio: finished")
+        
+        # Debug timestamp ranges for OpenAI Whisper too
+        if isinstance(result, dict) and 'segments' in result:
+            segments = result['segments']
+            if segments:
+                min_time = min(seg.get('start', 0) for seg in segments)
+                max_time = max(seg.get('end', 0) for seg in segments)
+                print(f"🔍 OPENAI WHISPER TIMESTAMP RANGE: {min_time:.1f}s - {max_time:.1f}s", file=sys.stderr)
         
         if isinstance(result, dict):
             return result

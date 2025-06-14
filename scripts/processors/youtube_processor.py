@@ -283,6 +283,29 @@ class YouTubeProcessor:
         self.watermark_path = watermark_path
         self.quote_matcher = DebuggingQuoteMatcher()
 
+    def seconds_to_timestamp(self, seconds: float) -> str:
+        """Convert seconds to hh:mm:ss.fff format."""
+        if seconds is None:
+            return "00:00:00.000"
+        
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = seconds % 60
+        
+        return f"{hours:02d}:{minutes:02d}:{secs:06.3f}"
+
+    def add_timestamps_to_segments(self, segments: List[Dict]) -> List[Dict]:
+        """Add start_ts and end_ts timestamp fields to segments."""
+        enhanced_segments = []
+        
+        for segment in segments:
+            enhanced_segment = segment.copy()
+            enhanced_segment['start_ts'] = self.seconds_to_timestamp(segment.get('start', 0))
+            enhanced_segment['end_ts'] = self.seconds_to_timestamp(segment.get('end', 0))
+            enhanced_segments.append(enhanced_segment)
+        
+        return enhanced_segments
+
     def merge_short_segments(self, segments, min_duration=8.0, max_duration=20.0):
         """
         Merge short segments into longer, more meaningful chunks.
@@ -745,6 +768,16 @@ class YouTubeProcessor:
         logging.info("YouTubeProcessor: downloaded to %s", video_path)
         print(f"Downloaded to: {video_path}", file=sys.stderr)
 
+        # DEBUG: Check video duration first
+        try:
+            probe_cmd = ["ffprobe", "-v", "quiet", "-show_entries", "format=duration", "-of", "csv=p=0", str(video_path)]
+            result = subprocess.run(probe_cmd, capture_output=True, text=True)
+            video_duration = float(result.stdout.strip()) if result.stdout.strip() else 0
+            print(f"📊 VIDEO DURATION: {video_duration:.1f}s ({video_duration/60:.1f} minutes)", file=sys.stderr)
+        except Exception as e:
+            print(f"   Could not check video duration: {e}", file=sys.stderr)
+            video_duration = 0
+
         if not transcript_text:
             wav_path = self.convert_to_wav(video_path, job_id)
 
@@ -774,9 +807,10 @@ class YouTubeProcessor:
             print(f"   First segment: {segments[0]}", file=sys.stderr)
             print(f"   Last segment: {segments[-1]}", file=sys.stderr)
             
+        if segments and len(segments) > 0:
             # Calculate average duration of original segments
             avg_duration = sum(s.get('end', 0) - s.get('start', 0) for s in segments) / len(segments)
-            print(f"   Average duration: {avg_duration:.1f}s", file=sys.stderr)
+            print(f"   Average segment duration: {avg_duration:.1f}s", file=sys.stderr)
             
             # Check for and fix missing timestamps
             valid_segments = []
@@ -824,22 +858,34 @@ class YouTubeProcessor:
             else:
                 print(f"⚠️  Segments already long enough, skipping merge", file=sys.stderr)
         
-        # Save segments for later clip extraction
+        # Add timestamp fields to segments before saving
+        enhanced_segments = self.add_timestamps_to_segments(segments)
+        
+        # Save enhanced segments for later clip extraction
         segments_file = self.public_folder / f"{job_id}_segments.json"
         try:
             with open(segments_file, "w") as f:
-                json.dump(segments, f, indent=2)
-            print(f"✅ Saved {len(segments)} segments to {segments_file}", file=sys.stderr)
+                json.dump(enhanced_segments, f, indent=2)
+            print(f"✅ Saved {len(enhanced_segments)} segments with timestamps to {segments_file}", file=sys.stderr)
             
-            # Verify the saved file
+            # Verify the saved file and show timestamp sample
             with open(segments_file, "r") as f:
                 saved_segments = json.load(f)
             print(f"✅ Verified: loaded {len(saved_segments)} segments from saved file", file=sys.stderr)
+            
+            # Show sample timestamps
+            if saved_segments:
+                sample = saved_segments[0]
+                start_ts = sample.get('start_ts', 'N/A')
+                end_ts = sample.get('end_ts', 'N/A')
+                text_preview = sample.get('text', '')[:50]
+                print(f"   Sample: {start_ts} - {end_ts}: '{text_preview}...'", file=sys.stderr)
             
         except Exception as e:
             print(f"❌ Error saving segments: {e}", file=sys.stderr)
             raise RuntimeError(f"Failed to save segments: {e}")
 
+        # Return original segments (without timestamps) for backward compatibility with other parts of the code
         return transcript_text, str(video_path), segments
 
     # Keep the old method for backward compatibility but use verification when possible
