@@ -167,10 +167,36 @@ class WhisperManager:
         print(f"   Audio duration: {audio_duration:.1f}s", file=sys.stderr)
         print(f"   Max segment timestamp: {max_timestamp:.1f}s", file=sys.stderr)
         
+        # If all timestamps are essentially zero, estimate sequential timings
+        if max_timestamp < audio_duration * 0.05:
+            print("   ❌ INVALID TIMESTAMPS! Segments appear to have no timing information", file=sys.stderr)
+            print("   🔧 Estimating timestamps from text length...", file=sys.stderr)
+
+            fixed_segments = []
+            current = 0.0
+            for segment in segments:
+                text = segment.get('text', '').strip()
+                if not text:
+                    continue
+                # Rough duration estimate ~2.5 words per second
+                words = len(text.split())
+                duration = max(1.0, words / 2.5)
+                start = current
+                end = start + duration
+                current = end
+                fixed_segments.append({
+                    'start': start,
+                    'end': end,
+                    'text': text,
+                })
+
+            print(f"   ✅ Estimated timestamps for {len(fixed_segments)} segments", file=sys.stderr)
+            return fixed_segments
+
         # Check if timestamps are reasonable (within 10% tolerance)
         if max_timestamp > audio_duration * 1.1:
             print(f"   ❌ INVALID TIMESTAMPS! Segments extend {max_timestamp - audio_duration:.1f}s beyond audio", file=sys.stderr)
-            print(f"   🔧 Attempting to fix by scaling timestamps...", file=sys.stderr)
+            print("   🔧 Attempting to fix by scaling timestamps...", file=sys.stderr)
             
             # Scale all timestamps to fit within audio duration
             scale_factor = (audio_duration * 0.95) / max_timestamp
