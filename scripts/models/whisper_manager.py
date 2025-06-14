@@ -130,10 +130,25 @@ class WhisperManager:
             probe_cmd = ["ffprobe", "-v", "quiet", "-show_entries", "format=duration", "-of", "csv=p=0", str(wav_path)]
             result = subprocess.run(probe_cmd, capture_output=True, text=True)
             duration = float(result.stdout.strip()) if result.stdout.strip() else 0
-            print(f"🎵 AUDIO FILE DURATION: {duration:.1f}s ({duration/60:.1f} minutes)", file=sys.stderr)
+            if duration > 0:
+                print(f"🎵 AUDIO FILE DURATION: {duration:.1f}s ({duration/60:.1f} minutes)", file=sys.stderr)
+                return duration
+            else:
+                raise RuntimeError("ffprobe returned zero duration")
+        except Exception as e:
+            print(f"⚠️  Could not determine audio duration with ffprobe: {e}", file=sys.stderr)
+
+        # Fallback to Python wave module if ffprobe fails
+        try:
+            import wave
+            with wave.open(str(wav_path), 'rb') as wf:
+                frames = wf.getnframes()
+                rate = wf.getframerate()
+                duration = frames / float(rate)
+            print(f"🎵 AUDIO FILE DURATION (wave): {duration:.1f}s ({duration/60:.1f} minutes)", file=sys.stderr)
             return duration
         except Exception as e:
-            print(f"⚠️  Could not determine audio duration: {e}", file=sys.stderr)
+            print(f"⚠️  Could not determine audio duration using wave: {e}", file=sys.stderr)
             return 0
 
     def validate_and_fix_timestamps(self, segments, audio_duration):
