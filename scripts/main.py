@@ -28,6 +28,67 @@ from models.whisper_manager import WhisperManager
 PUBLIC_FOLDER = Path(__file__).resolve().parents[1] / "public" / "generated"
 PUBLIC_FOLDER.mkdir(exist_ok=True, parents=True)
 
+WATERMARK_PATH = os.getenv(
+    "WATERMARK_PATH",
+    str(Path(__file__).resolve().parents[1] / "public" / "aiprepperWM.png"),
+)
+
+# Debug logging
+_log_path = os.getenv("LLM_DEBUG_LOG", "llm_debug.log")
+logging.basicConfig(filename=_log_path, level=logging.DEBUG,
+                    format="%(asctime)s %(levelname)s %(message)s")
+logging.info("Logging initialized at %s", _log_path)
+
+# Global managers
+llm_manager = LLMManager()
+whisper_manager = WhisperManager()
+
+def debug_environment():
+    """Print current environment settings for debugging"""
+    print("🔧 ENVIRONMENT DEBUG:", file=sys.stderr)
+    print(f"   CLIP_PADDING: {os.getenv('CLIP_PADDING', 'not set (default: 1.5)')}", file=sys.stderr)
+    print(f"   CONTEXT_PADDING: {os.getenv('CONTEXT_PADDING', 'not set (default: 2.5)')}", file=sys.stderr)
+    print(f"   WATERMARK_PATH: {os.getenv('WATERMARK_PATH', 'not set')}", file=sys.stderr)
+    print(f"   DATABASE_URL: {os.getenv('DATABASE_URL', 'not set')}", file=sys.stderr)
+
+def debug_segments_file(job_id):
+    """Debug what's actually in the segments file"""
+    segments_file = PUBLIC_FOLDER / f"{job_id}_segments.json"
+    
+    print(f"🔍 DEBUGGING SEGMENTS FILE: {segments_file}", file=sys.stderr)
+    print(f"   File exists: {segments_file.exists()}", file=sys.stderr)
+    
+    if not segments_file.exists():
+        print("   ❌ SEGMENTS FILE MISSING!", file=sys.stderr)
+        return
+    
+    try:
+        with open(segments_file, "r") as f:
+            segments = json.load(f)
+        
+        print(f"   Total segments: {len(segments)}", file=sys.stderr)
+        
+        if len(segments) > 0:
+            print(f"   First segment: {segments[0]}", file=sys.stderr)
+            print(f"   Last segment: {segments[-1]}", file=sys.stderr)
+            
+            # Check for timing issues
+            valid_times = 0
+            for i, seg in enumerate(segments[:10]):  # Check first 10
+                start = seg.get("start", 0)
+                end = seg.get("end", 0)
+                if start > 0 or end > 0:
+                    valid_times += 1
+                print(f"   Segment {i}: start={start}, end={end}, text='{seg.get('text', '')[:30]}...'", file=sys.stderr)
+            
+            print(f"   Segments with valid times (first 10): {valid_times}/10", file=sys.stderr)
+            
+            if valid_times == 0:
+                print("   ❌ ALL SEGMENTS HAVE ZERO TIMESTAMPS!", file=sys.stderr)
+                print("   This explains why clips are always from 0-3s", file=sys.stderr)
+            
+    except Exception as e:
+        print(f"   ❌ ERROR READING SEGMENTS: {e}", file=sys.stderr)
 
 def find_quote_timestamps(segments, quote, window=20, threshold=0.65, context_padding=2.0):
     """Convenience wrapper for YouTubeProcessor.find_quote_timestamps."""
@@ -171,21 +232,6 @@ def deduplicate_posts(posts: list[dict]) -> list[dict]:
     """Expose LLMManager.deduplicate_posts for tests."""
     return llm_manager.deduplicate_posts(posts)
 
-WATERMARK_PATH = os.getenv(
-    "WATERMARK_PATH",
-    str(Path(__file__).resolve().parents[1] / "public" / "aiprepperWM.png"),
-)
-
-# Debug logging
-_log_path = os.getenv("LLM_DEBUG_LOG", "llm_debug.log")
-logging.basicConfig(filename=_log_path, level=logging.DEBUG,
-                    format="%(asctime)s %(levelname)s %(message)s")
-logging.info("Logging initialized at %s", _log_path)
-
-# Global managers
-llm_manager = LLMManager()
-whisper_manager = WhisperManager()
-
 def save_transcript_simple(job_id: str, transcript: str):
     """Save transcript with simple, direct approach."""
     print(f"💾 SAVING TRANSCRIPT: {len(transcript)} chars for job {job_id}", file=sys.stderr)
@@ -308,12 +354,26 @@ def cleanup_old_files(days=30):
         logging.info("Cleaned up %d old files", cleaned)
         print(f"Cleaned up {cleaned} old files", file=sys.stderr)
 
+# Replace the process_clip_request function in your scripts/main.py with this:
+
 def process_clip_request(job_id, post_id, quote):
-    """Handle clip extraction request with proper quote matching."""
+    """Handle clip extraction request with proper quote matching and verification."""
+    print(f"🎬 CLIP REQUEST DEBUG:", file=sys.stderr)
+    print(f"   Job ID: {job_id}", file=sys.stderr)
+    print(f"   Post ID: {post_id}", file=sys.stderr)
+    print(f"   Quote: '{quote}'", file=sys.stderr)
+    
+    # ADD DEBUGGING CALL:
+    debug_segments_file(job_id)
+    
     youtube_processor = YouTubeProcessor(PUBLIC_FOLDER, WATERMARK_PATH)
     
     segments_file = PUBLIC_FOLDER / f"{job_id}_segments.json"
     video_path = PUBLIC_FOLDER / f"{job_id}_full.mp4"
+    
+    print(f"🎬 Looking for files:", file=sys.stderr)
+    print(f"   Segments file: {segments_file} (exists: {segments_file.exists()})", file=sys.stderr)
+    print(f"   Video file: {video_path} (exists: {video_path.exists()})", file=sys.stderr)
     
     if not segments_file.exists() or not video_path.exists():
         raise RuntimeError("Required files not found.")
@@ -321,26 +381,84 @@ def process_clip_request(job_id, post_id, quote):
     with open(segments_file, "r") as f:
         segments = json.load(f)
 
+    print(f"🎬 Loaded {len(segments)} segments from file", file=sys.stderr)
+    if segments:
+        print(f"🎬 First segment: {segments[0]}", file=sys.stderr)
+        print(f"🎬 Last segment: {segments[-1]}", file=sys.stderr)
+
+    # Check if segments have valid timestamps
+    valid_segments = [s for s in segments if s.get("start", 0) > 0 or s.get("end", 0) > 0]
+    if not valid_segments:
+        raise RuntimeError("No segments with valid timestamps found. The segments file may be corrupted.")
+
     # Use the improved quote matching directly
     start, end, snippet = youtube_processor.find_quote_timestamps(segments, quote)
+    
+    print(f"🎬 Quote matching result:", file=sys.stderr)
+    print(f"   Start: {start}", file=sys.stderr)
+    print(f"   End: {end}", file=sys.stderr)
+    print(f"   Snippet: '{snippet[:100] if snippet else None}...'", file=sys.stderr)
     
     if start is None or end is None:
         raise RuntimeError("Quote not found in transcript.")
 
     clip_path = PUBLIC_FOLDER / f"{post_id}.mp4"
-    if not youtube_processor.extract_clip(video_path, start, end, clip_path):
-        raise RuntimeError("Clip extraction failed.")
-
-    result = {
-        "status": "complete",
-        "media_path": f"/generated/{post_id}.mp4",
-        "start_time": start,
-        "end_time": end,
-    }
+    
+    # Get the clip padding from environment or use default
+    clip_padding = float(os.getenv("CLIP_PADDING", "1.5"))
+    
+    print(f"🎬 Extracting clip with verification:", file=sys.stderr)
+    print(f"   From: {start:.1f}s to {end:.1f}s", file=sys.stderr)
+    print(f"   Padding: {clip_padding}s", file=sys.stderr)
+    print(f"   Output: {clip_path}", file=sys.stderr)
+    
+    # Use the verified extraction method
+    extraction_result = youtube_processor.extract_clip_with_verification(
+        video_path, start, end, clip_path, quote, segments, clip_padding
+    )
+    
+    if not extraction_result['success']:
+        # If verification failed but we have a debug clip, use it
+        if extraction_result.get('debug_clip'):
+            print(f"🎬 Using debug clip due to verification failure", file=sys.stderr)
+            # Copy the debug clip to the expected location
+            import shutil
+            debug_clip_path = extraction_result['debug_clip']
+            shutil.copy(debug_clip_path, clip_path)
+            
+            result = {
+                "status": "complete",
+                "media_path": f"/generated/{post_id}.mp4",
+                "start_time": start - 30,  # Debug clip starts earlier
+                "end_time": end + 30,      # Debug clip ends later
+                "note": f"Extended clip created due to timing issues. Quote should be around {30 + (end-start)/2:.0f}s mark.",
+                "debug_info": "Transcript timing may not match video timing. This is an extended clip for manual verification."
+            }
+        else:
+            raise RuntimeError("Clip extraction and verification failed.")
+    else:
+        # Successful verified extraction
+        actual_start = extraction_result.get('adjusted_start', start)
+        actual_end = extraction_result.get('adjusted_end', end)
+        
+        result = {
+            "status": "complete", 
+            "media_path": f"/generated/{post_id}.mp4",
+            "start_time": actual_start,
+            "end_time": actual_end,
+            "verification": {
+                "strategy": extraction_result['strategy'],
+                "confidence": extraction_result['confidence'],
+                "timing_adjusted": actual_start != start or actual_end != end
+            }
+        }
+    
     if snippet:
         result["quote_snippet"] = snippet
 
+    print(f"🎬 SUCCESS! Returning: {result}", file=sys.stderr)
     return result
+
 
 def process_content(input_type, input_data, job_id, llm_backend):
     """Main content processing function."""
@@ -434,6 +552,7 @@ def process_content(input_type, input_data, job_id, llm_backend):
     return {"status": "complete", "posts": results}
 
 if __name__ == "__main__":
+    debug_environment()  # Add this debug call
     logging.info("script start: %s", sys.argv)
     
     if len(sys.argv) < 2:
