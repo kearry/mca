@@ -41,7 +41,12 @@ You can also reduce the size of downloaded videos by limiting the format used by
 example `bestvideo[height<=720]+bestaudio/best[height<=720]`). This value
 defaults to that 720p-limited string when unset.
 
-To use the Gemini 2.5 Pro Preview model set `GOOGLE_API_KEY` in your environment.
+To load a local [whisper.cpp](https://github.com/ggerganov/whisper.cpp) model
+set `WHISPER_BACKEND=cpp` and point `WHISPER_MODEL_PATH` to the `.gguf` file.
+The helper script will automatically use the `whispercpp` library when either
+the backend is "cpp" or the path ends in `.gguf`.
+
+To use the Gemini 2.0 Flash model set `GOOGLE_API_KEY` in your environment.
 The home page lets you pick either the local Phi model or Gemini from a drop‑down.
 
 If you want to brand generated clips with a watermark image, place
