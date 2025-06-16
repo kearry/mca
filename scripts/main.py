@@ -24,11 +24,6 @@ except Exception:
 from llama_cpp import Llama
 import whisper
 
-try:  # optional whisper.cpp binding
-    import whispercpp
-except Exception:  # pragma: no cover - optional dependency
-    whispercpp = None
-
 # --- Configuration ---
 MODEL_DIRECTORY = os.path.expanduser("~/.cache/lm-studio/models")
 
@@ -48,10 +43,6 @@ WHISPER_MODEL_NAME = "base.en"
 # path to a model file so we expand the user's home directory and provide that
 # path.
 WHISPER_MODEL_PATH = os.path.expanduser("~/whisper_models/base.en.pt")
-
-# When WHISPER_BACKEND is set to "cpp" or the model path ends with "gguf" the
-# helper loads the model via whispercpp.
-WHISPER_BACKEND = os.getenv("WHISPER_BACKEND", "auto")
 
 
 # Folder where generated media assets are stored under the repository root
@@ -128,7 +119,7 @@ WHISPER_TRANSCRIBER = None
 
 
 class GeminiLLM:
-    def __init__(self, model_name: str = "gemini-2.0-flash"):
+    def __init__(self, model_name: str = "gemini-2.5-pro-preview"):
         import google.generativeai as genai  # pragma: no cover - optional
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
@@ -176,15 +167,8 @@ def load_whisper():
     global WHISPER_TRANSCRIBER
     if WHISPER_TRANSCRIBER is None:
         model_path = WHISPER_MODEL_PATH if os.path.exists(WHISPER_MODEL_PATH) else WHISPER_MODEL_NAME
-        use_cpp = WHISPER_BACKEND == "cpp" or str(model_path).endswith(".gguf")
-        if use_cpp:
-            if whispercpp is None:
-                raise RuntimeError("whispercpp library not installed")
-            logging.info("Loading whisper.cpp model %s", model_path)
-            WHISPER_TRANSCRIBER = whispercpp.Whisper(model_path)
-        else:
-            logging.info("Loading Whisper model %s", model_path)
-            WHISPER_TRANSCRIBER = whisper.load_model(model_path)
+        logging.info("Loading Whisper model %s", model_path)
+        WHISPER_TRANSCRIBER = whisper.load_model(model_path)
         logging.info("Whisper model loaded")
     return WHISPER_TRANSCRIBER
 
