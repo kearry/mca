@@ -142,7 +142,8 @@ class GeminiLLM:
 def load_llm(backend: str | None = None):
     """Initialize and return the global LLM text generator."""
     global LLM_TEXT_GENERATOR, LLM_BACKEND
-    backend = backend or os.getenv("LLM_BACKEND", "phi")
+    if backend is None:
+        backend = LLM_BACKEND or os.getenv("LLM_BACKEND", "gemini")
     if LLM_TEXT_GENERATOR is None or backend != LLM_BACKEND:
         LLM_BACKEND = backend
         if backend == "gemini":
@@ -613,7 +614,7 @@ if __name__ == "__main__":
 
     input_data = sys.argv[2]
     job_id = sys.argv[3]
-    llm_backend = sys.argv[4] if len(sys.argv) >= 5 else "phi"
+    llm_backend = sys.argv[4] if len(sys.argv) >= 5 else "gemini"
 
     existing_posts = load_existing_posts(job_id)
     existing_media = list(PUBLIC_FOLDER.glob(f"{job_id}_*"))

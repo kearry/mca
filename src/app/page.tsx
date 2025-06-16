@@ -13,7 +13,7 @@ export default function HomePage() {
     const [inputValue, setInputValue] = useState('');
     const [pdfFile, setPdfFile] = useState<File | null>(null);
     type ModelType = 'phi' | 'gemini';
-    const [model, setModel] = useState<ModelType>('phi');
+    const [model, setModel] = useState<ModelType>('gemini');
     const [isLoading, setIsLoading] = useState(false);
     const [jobId, setJobId] = useState<string | null>(null);
     const [jobResult, setJobResult] = useState<(Job & { posts: ExtendedPost[] }) | null>(null);

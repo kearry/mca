@@ -140,7 +140,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Python runtime not found' }, { status: 500 });
         }
 
-        const model = llmModel || 'phi';
+        const model = llmModel || 'gemini';
         let scriptArgs: string[] = [];
         if (inputType === 'youtube') {
             scriptArgs = [inputType, url, job.id, model];

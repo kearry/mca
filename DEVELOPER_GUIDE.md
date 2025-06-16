@@ -94,7 +94,7 @@ The script accepts four arguments:
 ```bash
 python scripts/main.py <input_type> <input_data> <job_id> [llm_model]
 ```
-`<input_type>` is `youtube`, `pdf` or `text`. `<input_data>` is a URL, file path or text. `<job_id>` can be any identifier (the web app generates one automatically). `[llm_model]` is `phi` or `gemini` and defaults to `phi`.
+`<input_type>` is `youtube`, `pdf` or `text`. `<input_data>` is a URL, file path or text. `<job_id>` can be any identifier (the web app generates one automatically). `[llm_model]` is `phi` or `gemini` and defaults to `gemini`.
 If a YouTube video requires authentication, create a `.env` file in the project
 root with `YTDLP_COOKIE_FILE` set to the path of a browser-exported cookies
 file. The Python helper automatically loads `.env` if present. Consult the
