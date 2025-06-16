@@ -103,6 +103,9 @@ for tips on exporting cookies.
 To limit the resolution (and thus file size) of downloaded videos, set
 `YTDLP_VIDEO_FORMAT` to a yt_dlp format string. It defaults to
 `bestvideo[height<=720]+bestaudio/best[height<=720]`.
+To use a whisper.cpp model set `WHISPER_BACKEND=cpp` and
+`WHISPER_MODEL_PATH` to the `.gguf` file. The helper falls back to the
+standard OpenAI Whisper library otherwise.
 Set `GOOGLE_API_KEY` when using the Gemini model.
 Example:
 ```bash
