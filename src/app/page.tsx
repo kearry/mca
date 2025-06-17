@@ -139,7 +139,7 @@ export default function HomePage() {
                         >
                             <option value="phi">Phi 3.1 Mini (local)</option>
                             <option value="deepseek-r1">DeepSeek R1 Distill (local)</option>
-                            <option value="gemini">Gemini 2.5 Flash Preview (05-20)</option>
+                            <option value="gemini">Gemini 2.0 Flash Lite</option>
                         </select>
                     </div>
                     <button type="submit" disabled={isLoading} className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center">

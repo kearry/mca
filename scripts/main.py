@@ -127,7 +127,7 @@ WHISPER_TRANSCRIBER = None
 
 
 class GeminiLLM:
-    def __init__(self, model_name: str = "gemini-2.5-flash-preview-05-20"):
+    def __init__(self, model_name: str = "gemini-2.0-flash-lite"):
         import google.generativeai as genai  # pragma: no cover - optional
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
