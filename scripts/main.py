@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from difflib import SequenceMatcher
 import logging
 import sqlite3
+import shutil
 
 # Load environment variables from an optional .env file so users can
 # configure settings like YTDLP_COOKIE_FILE without exporting them
@@ -354,57 +355,102 @@ def extract_clip(video_path, start, end, output_path, watermark_path=None):
     
     
 def parse_youtube(url, job_id):
-    import yt_dlp
-    from yt_dlp.utils import DownloadError
+    """Download and transcribe a YouTube video.
 
-    class _Logger:
-        def debug(self, msg):
-            pass
-        def warning(self, msg):
-            pass
-        def error(self, msg):
-            print(msg, file=sys.stderr)
+    If the installed ``whisper`` package exposes a ``parse_youtube`` helper this
+    implementation defers to it.  Otherwise it falls back to using ``yt_dlp`` to
+    download the video and then transcribes the file locally.
+    """
 
-    logging.info("parse_youtube: downloading %s", url)
-    print("Downloading YouTube video...", file=sys.stderr)
     video_path = PUBLIC_FOLDER / f"{job_id}_full.mp4"
-    video_format = os.getenv(
-        "YTDLP_VIDEO_FORMAT",
-        "bestvideo[height<=720]+bestaudio/best[height<=720]",
-    )
-    logging.info("parse_youtube: using format %s", video_format)
-    ydl_opts = {
-        'format': video_format,
-        'outtmpl': str(video_path),
-        'quiet': True,
-        'no_warnings': True,
-        'merge_output_format': 'mp4',
-        'logger': _Logger(),
-    }
-    cookie_file = os.getenv("YTDLP_COOKIE_FILE")
-    if cookie_file and os.path.exists(cookie_file):
-        print(f"Using cookies from {cookie_file}", file=sys.stderr)
-        ydl_opts['cookiefile'] = cookie_file
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        try:
-            ydl.download([url])
-        except DownloadError as e:
-            message = str(e)
-            if "Sign in to confirm" in message:
-                message += (
-                    "\nSet the YTDLP_COOKIE_FILE environment variable to the "
-                    "path of a browser-exported cookies file so yt_dlp can "
-                    "authenticate."
-                )
-            raise RuntimeError(f"Failed to download video: {message}")
-    logging.info("parse_youtube: downloaded to %s", video_path)
-    print(f"Downloaded to: {video_path}", file=sys.stderr)
 
-    logging.info("parse_youtube: transcribing")
-    print("Transcribing audio...", file=sys.stderr)
-    transcript_result = transcribe_audio(str(video_path))
+    try:
+        import whisper  # type: ignore
+
+        if hasattr(whisper, "parse_youtube"):
+            logging.info("parse_youtube: using whisper.parse_youtube for %s", url)
+            print("Downloading YouTube video...", file=sys.stderr)
+            try:
+                result = whisper.parse_youtube(url, output_dir=str(PUBLIC_FOLDER))
+            except TypeError:
+                # Older versions may not accept output_dir
+                result = whisper.parse_youtube(url)
+
+            if isinstance(result, tuple) and len(result) == 3:
+                transcript_text, path, segments = result
+            elif isinstance(result, dict):
+                transcript_text = result.get("text", "")
+                segments = result.get("segments", [])
+                path = result.get("path") or result.get("file") or video_path
+            else:
+                transcript_text = result if isinstance(result, str) else ""
+                segments = []
+                path = video_path
+
+            if path != video_path:
+                try:
+                    shutil.move(path, video_path)
+                except Exception:
+                    pass
+
+            logging.info("parse_youtube: downloaded to %s", video_path)
+            transcript_result = {
+                "text": transcript_text,
+                "segments": segments,
+            }
+        else:
+            raise ImportError("whisper.parse_youtube not available")
+    except Exception as e:
+        logging.info("parse_youtube: whisper fallback due to %s", e)
+        import yt_dlp
+        from yt_dlp.utils import DownloadError
+
+        class _Logger:
+            def debug(self, msg):
+                pass
+            def warning(self, msg):
+                pass
+            def error(self, msg):
+                print(msg, file=sys.stderr)
+
+        logging.info("parse_youtube: downloading %s via yt_dlp", url)
+        print("Downloading YouTube video...", file=sys.stderr)
+        video_format = os.getenv(
+            "YTDLP_VIDEO_FORMAT",
+            "bestvideo[height<=720]+bestaudio/best[height<=720]",
+        )
+        logging.info("parse_youtube: using format %s", video_format)
+        ydl_opts = {
+            "format": video_format,
+            "outtmpl": str(video_path),
+            "quiet": True,
+            "no_warnings": True,
+            "merge_output_format": "mp4",
+            "logger": _Logger(),
+        }
+        cookie_file = os.getenv("YTDLP_COOKIE_FILE")
+        if cookie_file and os.path.exists(cookie_file):
+            print(f"Using cookies from {cookie_file}", file=sys.stderr)
+            ydl_opts["cookiefile"] = cookie_file
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            try:
+                ydl.download([url])
+            except DownloadError as e:
+                message = str(e)
+                if "Sign in to confirm" in message:
+                    message += (
+                        "\nSet the YTDLP_COOKIE_FILE environment variable to the "
+                        "path of a browser-exported cookies file so yt_dlp can "
+                        "authenticate."
+                    )
+                raise RuntimeError(f"Failed to download video: {message}")
+
+        logging.info("parse_youtube: downloaded to %s", video_path)
+        transcript_result = transcribe_audio(str(video_path))
+
     transcript_text = transcript_result.get("text", "")
     segments = transcript_result.get("segments", [])
+
     logging.info(
         "parse_youtube: transcription complete (%d chars, %d segments)",
         len(transcript_text),
