@@ -136,7 +136,36 @@ class GeminiLLM:
                 "max_output_tokens": max_tokens,
             },
         )
-        return {"choices": [{"message": {"content": resp.text}}]}
+
+        try:
+            content = resp.text
+        except Exception as e:  # pragma: no cover - depends on optional library
+            finish_reason = None
+            try:
+                if getattr(resp, "candidates", None):
+                    finish_reason = resp.candidates[0].finish_reason
+            except Exception:
+                pass
+
+            block_reason = None
+            try:
+                block_reason = resp.prompt_feedback.block_reason
+            except Exception:
+                pass
+
+            details = []
+            if block_reason:
+                details.append(f"blocked ({block_reason})")
+            if finish_reason is not None:
+                details.append(f"finish_reason={finish_reason}")
+            if not details:
+                details.append(str(e))
+
+            raise RuntimeError(
+                "Gemini response returned no text: " + ", ".join(details)
+            )
+
+        return {"choices": [{"message": {"content": content}}]}
 
 
 def load_llm(backend: str | None = None):
