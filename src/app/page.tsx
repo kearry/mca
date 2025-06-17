@@ -12,7 +12,7 @@ export default function HomePage() {
     const [inputType, setInputType] = useState<InputType>('youtube');
     const [inputValue, setInputValue] = useState('');
     const [pdfFile, setPdfFile] = useState<File | null>(null);
-    type ModelType = 'phi' | 'gemini';
+    type ModelType = 'phi' | 'deepseek-r1' | 'gemini';
     const [model, setModel] = useState<ModelType>('gemini');
     const [isLoading, setIsLoading] = useState(false);
     const [jobId, setJobId] = useState<string | null>(null);
@@ -138,6 +138,7 @@ export default function HomePage() {
                             className="w-full p-2 border rounded bg-gray-50 dark:bg-gray-700 dark:border-gray-600"
                         >
                             <option value="phi">Phi 3.1 Mini (local)</option>
+                            <option value="deepseek-r1">DeepSeek R1 Distill (local)</option>
                             <option value="gemini">Gemini 2.5 Flash Preview (05-20)</option>
                         </select>
                     </div>

@@ -42,7 +42,7 @@ example `bestvideo[height<=720]+bestaudio/best[height<=720]`). This value
 defaults to that 720p-limited string when unset.
 
 To use the Gemini 2.5 Flash Preview (model `gemini-2.5-flash-preview-05-20`) set `GOOGLE_API_KEY` in your environment.
-The home page lets you pick either the local Phi model or Gemini from a drop‑down.
+The home page lets you pick from Gemini or one of the local models (Phi or DeepSeek‑R1) using a drop‑down.
 
 If you want to brand generated clips with a watermark image, place
 `aiprepperWM.png` in the `public` folder or set the `WATERMARK_PATH`
