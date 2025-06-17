@@ -108,6 +108,24 @@ class GeneratePostsTests(unittest.TestCase):
         self.assertEqual(len(posts), 1)
         self.assertEqual(posts[0]["post_text"], "solo")
 
+    def test_truncated_array_returns_complete_objects(self):
+        stub = StubLLM([
+            '[{"post_text": "a", "source_quote": "q1"}, {"post_text": "b", "source_quote": "q2"}'
+        ])
+        main.load_llm = lambda: stub
+        posts = main.generate_posts_from_text("hello", "text")
+        self.assertEqual(len(posts), 2)
+        self.assertEqual(posts[1]["post_text"], "b")
+
+    def test_truncated_array_mid_object(self):
+        stub = StubLLM([
+            '[{"post_text": "a", "source_quote": "q1"}, {"post_text": "b"'
+        ])
+        main.load_llm = lambda: stub
+        posts = main.generate_posts_from_text("hello", "text")
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0]["post_text"], "a")
+
 
     def test_deduplicate_posts_by_quote(self):
         posts = [
