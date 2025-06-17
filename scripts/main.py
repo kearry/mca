@@ -4,7 +4,6 @@ import os
 import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
-import wave  # For checking audio properties
 from difflib import SequenceMatcher
 import logging
 import sqlite3
@@ -119,7 +118,7 @@ WHISPER_TRANSCRIBER = None
 
 
 class GeminiLLM:
-    def __init__(self, model_name: str = "gemini-2.5-pro-preview"):
+    def __init__(self, model_name: str = "gemini-2.5-pro-preview-06-05"):
         import google.generativeai as genai  # pragma: no cover - optional
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
@@ -173,31 +172,12 @@ def load_whisper():
     return WHISPER_TRANSCRIBER
 
 # --- Audio & Video Parsers ---
-def convert_to_wav(video_path, job_id):
-    audio_output_path = PUBLIC_FOLDER / f"{job_id}_audio.wav"
-    command = [
-        'ffmpeg', '-i', str(video_path),
-        '-ar', '16000',      # 16kHz
-        '-ac', '1',          # mono
-        '-y', str(audio_output_path)
-    ]
-    try:
-        logging.info("convert_to_wav: running ffmpeg %s", ' '.join(command))
-        print("Converting video to WAV for Whisper...", file=sys.stderr)
-        subprocess.run(command, check=True, capture_output=True, text=True)
-        print("Conversion successful.", file=sys.stderr)
-        logging.info("convert_to_wav: wrote %s", audio_output_path)
-        return str(audio_output_path)
-    except subprocess.CalledProcessError as e:
-        print(f"FFmpeg error: {e.stderr}", file=sys.stderr)
-        logging.error("convert_to_wav failed: %s", e.stderr)
-        raise RuntimeError(f"FFmpeg failed: {e.stderr}")
 
-def transcribe_audio(wav_path: str) -> dict:
-    """Run Whisper on the provided WAV file and return the full result dict."""
+def transcribe_audio(media_path: str) -> dict:
+    """Run Whisper on *media_path* and return the full result dict."""
     whisper_model = load_whisper()
-    logging.info("transcribe_audio: starting on %s", wav_path)
-    result = whisper_model.transcribe(wav_path)
+    logging.info("transcribe_audio: starting on %s", media_path)
+    result = whisper_model.transcribe(media_path)
     logging.info("transcribe_audio: finished")
     if isinstance(result, dict):
         return result
@@ -420,11 +400,9 @@ def parse_youtube(url, job_id):
     logging.info("parse_youtube: downloaded to %s", video_path)
     print(f"Downloaded to: {video_path}", file=sys.stderr)
 
-    wav_path = convert_to_wav(video_path, job_id)
-
     logging.info("parse_youtube: transcribing")
     print("Transcribing audio...", file=sys.stderr)
-    transcript_result = transcribe_audio(wav_path)
+    transcript_result = transcribe_audio(str(video_path))
     transcript_text = transcript_result.get("text", "")
     segments = transcript_result.get("segments", [])
     logging.info(
