@@ -27,12 +27,20 @@ import whisper
 # --- Configuration ---
 MODEL_DIRECTORY = os.path.expanduser("~/.cache/lm-studio/models")
 
-# LLaMA-style text generator model
-# Default to the Phi-3.1-mini model with a 128k token context window
-LLM_MODEL_PATH = os.path.join(
-    MODEL_DIRECTORY,
-    "lmstudio-community/Phi-3.1-mini-128k-instruct-GGUF/Phi-3.1-mini-128k-instruct-Q4_K_M.gguf",
-)
+# LLaMA-style text generator models
+LOCAL_LLM_MODELS = {
+    "phi": os.path.join(
+        MODEL_DIRECTORY,
+        "lmstudio-community/Phi-3.1-mini-128k-instruct-GGUF/Phi-3.1-mini-128k-instruct-Q4_K_M.gguf",
+    ),
+    "deepseek-r1": os.path.join(
+        MODEL_DIRECTORY,
+        "unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/DeepSeek-R1-Distill-Qwen-1.5B-Q8_0.gguf",
+    ),
+}
+
+# Default local model
+LLM_MODEL_PATH = LOCAL_LLM_MODELS["phi"]
 
 # Whisper model identifier or path accepted by the openai-whisper library. We
 # default to the "base.en" model name but also allow specifying a path to a
@@ -179,9 +187,10 @@ def load_llm(backend: str | None = None):
             logging.info("Loading Gemini model")
             LLM_TEXT_GENERATOR = GeminiLLM()
         else:
-            logging.info("Loading LLaMA model from %s", LLM_MODEL_PATH)
+            model_file = LOCAL_LLM_MODELS.get(backend, LLM_MODEL_PATH)
+            logging.info("Loading LLaMA model from %s", model_file)
             LLM_TEXT_GENERATOR = Llama(
-                model_path=LLM_MODEL_PATH,
+                model_path=model_file,
                 n_gpu_layers=-1,
                 n_ctx=8192,
                 verbose=True,
