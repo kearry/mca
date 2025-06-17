@@ -231,6 +231,36 @@ import re
 # Remove paired <think>...</think> blocks that some LLMs prepend.
 _THINK_TAG_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 
+
+def _repair_json_array(text: str):
+    """Attempt to salvage a JSON array from possibly truncated ``text``.
+
+    Returns a list of objects if at least one complete JSON object can be
+    decoded from the array, otherwise ``None``.
+    """
+    start = text.find("[")
+    if start == -1:
+        return None
+
+    decoder = json.JSONDecoder()
+    pos = start + 1
+    objects = []
+
+    while True:
+        # Skip whitespace and commas between objects
+        while pos < len(text) and text[pos] in " \t\r\n,":
+            pos += 1
+        if pos >= len(text):
+            break
+        try:
+            obj, end = decoder.raw_decode(text, pos)
+        except json.JSONDecodeError:
+            break
+        objects.append(obj)
+        pos = end
+
+    return objects if objects else None
+
 def _extract_json(text: str):
     """Extract the most relevant JSON object or array found in *text*.
 
@@ -253,6 +283,14 @@ def _extract_json(text: str):
 
     best_obj = None
     best_len = -1
+
+    # First try to repair a possibly truncated JSON array
+    repaired = _repair_json_array(text)
+    if repaired is not None:
+        serialized_len = len(json.dumps(repaired))
+        best_obj = repaired
+        best_len = serialized_len
+
     for idx, ch in enumerate(text):
         if ch in "[{":
             try:
@@ -263,6 +301,7 @@ def _extract_json(text: str):
             if length > best_len:
                 best_obj = obj
                 best_len = length
+
     if best_obj is not None:
         return best_obj
     logging.error("_extract_json: failed to find JSON")
