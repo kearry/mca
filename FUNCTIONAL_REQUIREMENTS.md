@@ -19,7 +19,7 @@ This document summarizes the primary functional capabilities provided by the app
 - The backend spawns `scripts/main.py` with arguments specifying the input type, input data and job ID.
 - For **YouTube** inputs the script:
   1. Downloads the video using `yt_dlp` (optionally with cookies from `YTDLP_COOKIE_FILE`).
-  2. Converts the video to WAV audio via `ffmpeg` and transcribes it with Whisper.
+  2. Passes the video directly to Whisper for transcription.
   3. Generates social media posts with LLaMA using the transcript text.
   4. Locates quoted segments in the transcript, extracts short video clips and stores them under `public/generated/`.
 - For **PDF** inputs the script:

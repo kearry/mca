@@ -76,8 +76,7 @@ The API creates a **Job** when a request begins and fills the **Post** table wit
 ### Major modules and functions
 
 - **`scripts/main.py`** holds most of the backend logic. Key helpers include:
-  - `convert_to_wav()` – converts a downloaded video into a mono 16 kHz WAV file for Whisper.
-  - `transcribe_audio()` – runs the Whisper model and returns a transcript and segment timings.
+  - `transcribe_audio()` – runs the Whisper model on a video or audio file and returns a transcript and segment timings.
   - `find_quote_timestamps()` – searches transcription segments to locate quoted phrases and returns their start and end times.
   - `extract_clip()` – uses ffmpeg to cut a short video clip for a given time window.
   - `parse_youtube()` – downloads YouTube videos, transcribes them and returns text plus segments.

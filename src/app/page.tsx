@@ -138,7 +138,7 @@ export default function HomePage() {
                             className="w-full p-2 border rounded bg-gray-50 dark:bg-gray-700 dark:border-gray-600"
                         >
                             <option value="phi">Phi 3.1 Mini (local)</option>
-                            <option value="gemini">Gemini 2.5 Pro Preview</option>
+                            <option value="gemini">Gemini 2.5 Pro Preview (06-05)</option>
                         </select>
                     </div>
                     <button type="submit" disabled={isLoading} className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center">
